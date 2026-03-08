@@ -1,0 +1,9 @@
+{
+  "name": "Adaptive Plant",
+  "domain": "adaptive_plant",
+  "documentation": "https://github.com/Big-Xan/adaptive_plant",
+  "issue_tracker": "https://github.com/Big-Xan/adaptive_plant/issues",
+  "codeowners": ["@Big-Xan"],
+  "homeassistant": "2024.6.0",
+  "iot_class": "local_push"
+}

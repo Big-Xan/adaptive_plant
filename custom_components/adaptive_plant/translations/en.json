@@ -1,0 +1,151 @@
+{
+  "title": "Adaptive Plant",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add a Plant",
+        "description": "Set up basic care settings for your plant.",
+        "data": {
+          "plant_name": "Plant name",
+          "area": "Area",
+          "watering_interval_days": "Watering interval (days)",
+          "early_watering_threshold": "Early watering threshold (times)",
+          "snooze_threshold": "Snooze threshold (times)",
+          "health_prompt_interval_days": "Health prompt interval (days)"
+        },
+        "data_description": {
+          "plant_name": "A friendly name for this plant.",
+          "area": "Assign this plant to a Home Assistant area.",
+          "watering_interval_days": "How many days between waterings.",
+          "early_watering_threshold": "How many early waterings before the interval is shortened by 1 day.",
+          "snooze_threshold": "How many consecutive periods snoozed before the interval is increased by 1 day.",
+          "health_prompt_interval_days": "How many days before a health-check notification is sent."
+        }
+      },
+      "features": {
+        "title": "Optional Features",
+        "description": "Enable optional features for this plant.",
+        "data": {
+          "enable_fertilization": "Track fertilization",
+          "enable_notes": "Add a notes field",
+          "enable_image": "Show a plant image",
+          "moisture_sensor": "Moisture sensor (optional)"
+        },
+        "data_description": {
+          "moisture_sensor": "Select an existing sensor to drive automatic watering logic."
+        }
+      },
+      "last_watered": {
+        "title": "Last Watering",
+        "description": "When did you last water this plant?",
+        "data": {
+          "initial_last_watered": "Last watered"
+        }
+      },
+      "last_watered_custom": {
+        "title": "Last Watering — Custom Date",
+        "description": "Enter the date you last watered this plant.",
+        "data": {
+          "custom_watered_date": "Date last watered"
+        }
+      },
+      "fertilize": {
+        "title": "Fertilization Settings",
+        "data": {
+          "fertilization_interval_days": "Fertilization interval (days)"
+        }
+      },
+      "last_fertilized": {
+        "title": "Last Fertilization",
+        "description": "When did you last fertilize this plant?",
+        "data": {
+          "initial_last_fertilized": "Last fertilized"
+        }
+      },
+      "last_fertilized_custom": {
+        "title": "Last Fertilization — Custom Date",
+        "description": "Enter the date you last fertilized this plant.",
+        "data": {
+          "custom_fertilized_date": "Date last fertilized"
+        }
+      },
+      "image": {
+        "title": "Plant Image",
+        "description": "Enter a path to an image in your /local/ folder (e.g. /local/IMG_4743.jpeg).",
+        "data": {
+          "image_path": "Image path (/local/...)"
+        }
+      },
+      "moisture": {
+        "title": "Moisture Thresholds",
+        "description": "Set the thresholds for dry and wet moisture readings.",
+        "data": {
+          "dry_threshold": "Dry threshold (reschedule watering to today)",
+          "wet_threshold": "Wet threshold (auto-mark as watered)"
+        }
+      }
+    },
+    "error": {
+      "name_required": "Plant name cannot be empty.",
+      "invalid_image_path": "Image path must start with /local/.",
+      "dry_above_wet": "Dry threshold must be less than wet threshold.",
+      "invalid_date": "Please enter a valid date."
+    },
+    "abort": {
+      "already_configured": "This plant is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Update Plant Settings",
+        "data": {
+          "watering_interval_days": "Watering interval (days)",
+          "early_watering_threshold": "Early watering threshold (times)",
+          "snooze_threshold": "Snooze threshold (times)",
+          "health_prompt_interval_days": "Health prompt interval (days)",
+          "fertilization_interval_days": "Fertilization interval (days)",
+          "image_path": "Image path (/local/...)",
+          "dry_threshold": "Dry threshold",
+          "wet_threshold": "Wet threshold"
+        }
+      }
+    },
+    "error": {
+      "dry_above_wet": "Dry threshold must be less than wet threshold."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "last_watered": { "name": "Last watered" },
+      "next_watering": { "name": "Next watering" },
+      "days_until_watering": { "name": "Days until watering" },
+      "last_fertilized": { "name": "Last fertilized" },
+      "next_fertilized": { "name": "Next fertilization" },
+      "days_until_fertilizing": { "name": "Days until fertilization" }
+    },
+    "button": {
+      "mark_watered": { "name": "Mark watered" },
+      "snooze_watering": { "name": "Snooze watering" },
+      "mark_fertilized": { "name": "Mark fertilized" }
+    },
+    "number": {
+      "watering_interval_days": { "name": "Watering interval" },
+      "fertilization_interval_days": { "name": "Fertilization interval" }
+    },
+    "select": {
+      "health": {
+        "name": "Health",
+        "state": {
+          "Excellent": "Excellent",
+          "Good": "Good",
+          "Poor": "Poor",
+          "Sick": "Sick"
+        }
+      }
+    },
+    "text": {
+      "notes": { "name": "Notes" }
+    }
+  }
+}
