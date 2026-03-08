@@ -12,8 +12,8 @@ A fully local, event-driven Home Assistant custom integration for tracking and m
 
 ### 🚿 Adaptive Watering
 - Track watering intervals per plant
-- **Adaptive interval reduction** — if you consistently water early, the interval automatically shortens
-- **Adaptive interval extension** — if you consistently snooze watering, the interval automatically lengthens
+- **Adaptive & customizable interval reduction** — if you consistently water early, the interval automatically shortens
+- **Adaptive & customizable interval extension** — if you consistently snooze watering, the interval automatically lengthens
 - Snooze watering by one day without resetting the period
 - Sensors show human-readable status: `Today`, `In 3 Days`, `2 Days Overdue`
 
@@ -34,7 +34,7 @@ A fully local, event-driven Home Assistant custom integration for tracking and m
 - Free-form text field stored per plant
 
 ### 🖼️ Plant Image (optional)
-- Attach a `/local/` image path to display on dashboard cards
+- Attach a `/local/` image path to display on dashboard cards. Can be changed via configuration after entry is created. I recommend uploading your plant images to your /www/ folder.
 
 ### 🏠 Area Support
 - Assign each plant to a Home Assistant area during setup
