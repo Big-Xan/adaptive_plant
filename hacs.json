@@ -5,7 +5,5 @@
   "issue_tracker": "https://github.com/Big-Xan/adaptive_plant/issues",
   "codeowners": ["@Big-Xan"],
   "homeassistant": "2024.6.0",
-  "iot_class": "local_push",
-  "render_readme": true,
-  "filename": "adaptive-plant-card.js"
+  "iot_class": "local_push"
 }
