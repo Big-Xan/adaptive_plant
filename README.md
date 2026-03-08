@@ -7,6 +7,14 @@ A fully local, event-driven Home Assistant custom integration for tracking and m
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ---
+## Contents
+- [Features](#features)
+- [Installation](#installation)
+- [Setup](#setup)
+- [Entities](#entities)
+- [Adaptive Logic](#adaptive-logic)
+- [Companion Lovelace Card](#-companion-lovelace-card)
+---
 
 ## Features
 
