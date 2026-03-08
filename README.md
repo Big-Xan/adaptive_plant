@@ -132,7 +132,39 @@ This repo includes a companion Lovelace card (`adaptive-plant-card.js`) with a f
 
 ### Card Configuration
 
-The card is fully configurable via the visual editor. For YAML configuration:
+The card is fully configurable via the visual editor — no YAML required. The card can be modified via YAML if that is your preference (scroll down)
+
+**Default configuration (no options set):**
+
+![Adaptive Plant Card default](https://github.com/user-attachments/assets/828f9765-de57-48d6-92d3-d2b11a8e8d11)
+
+**Example with native HA icons, static height, and health ring:**
+
+![Adaptive Plant Card with MDI icons](https://github.com/user-attachments/assets/37076d4f-650b-4cd4-8fc5-b35b01203156)
+```yaml
+type: custom:adaptive-plant-card
+height: 725
+upcoming_days: 21
+icons:
+  water: mdi:water
+  water_color: "#64b4ff"
+  fertilize: mdi:flower
+  fertilize_color: "#7cb97e"
+  snooze: mdi:bell-sleep
+  snooze_color: "#aaaaaa"
+  fertilize_done: mdi:check
+  fertilize_done_color: "#7cb97e"
+  water_done: mdi:check
+  water_done_color: "#64b4ff"
+health:
+  ring_width: 2
+```
+
+**Visual editor:**
+
+![Adaptive Plant Card visual editor](https://github.com/user-attachments/assets/445aabd9-cc83-4858-a7ea-e2f3e7a937e5)
+
+For full YAML configuration reference:
 
 ```yaml
 type: custom:adaptive-plant-card
@@ -178,7 +210,7 @@ icons:
   water_done_color: '#64b4ff'
 ```
 
-All options are optional — omit any to use defaults.
+All options are... well they're optional — omit any to use defaults.
 
 ---
 
