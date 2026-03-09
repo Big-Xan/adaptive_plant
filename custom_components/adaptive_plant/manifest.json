@@ -3,7 +3,7 @@
   "name": "Adaptive Plant",
   "version": "1.0.0",
   "config_flow": true,
-  "documentation": ""https://github.com/Big-Xan/adaptive_plant"",
+  "documentation": "https://github.com/Big-Xan/adaptive_plant",
   "requirements": [],
   "dependencies": [],
   "codeowners": [],
