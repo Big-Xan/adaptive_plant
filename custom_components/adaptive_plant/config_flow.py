@@ -21,6 +21,7 @@ from .const import (
     CONF_IMAGE_PATH,
     CONF_INITIAL_LAST_FERTILIZED,
     CONF_INITIAL_LAST_WATERED,
+    CONF_LABEL,
     CONF_MOISTURE_SENSOR,
     CONF_PLANT_NAME,
     CONF_SNOOZE_THRESHOLD,
@@ -45,6 +46,7 @@ def _basic_schema(defaults: dict) -> vol.Schema:
     return vol.Schema({
         vol.Required(CONF_PLANT_NAME, default=defaults.get(CONF_PLANT_NAME, "")): selector.selector({"text": {}}),
         vol.Optional(CONF_AREA): selector.selector({"area": {}}),
+        vol.Optional(CONF_LABEL, default=defaults.get(CONF_LABEL, "")): selector.selector({"text": {}}),
         vol.Required(OPT_WATERING_INTERVAL, default=defaults.get(OPT_WATERING_INTERVAL, DEFAULT_WATERING_INTERVAL)): selector.selector(
             {"number": {"min": 1, "max": 365, "mode": "box", "unit_of_measurement": "days"}}
         ),
@@ -319,10 +321,25 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
                 errors["base"] = "dry_above_wet"
             else:
                 cleaned = {k: v for k, v in user_input.items() if v not in (None, "")}
-                return self.async_create_entry(title="", data={**current_opts, **cleaned})
+                # Normalise label: strip whitespace, treat literal "null" as clearing it
+                if CONF_LABEL in cleaned:
+                    lv = cleaned[CONF_LABEL].strip()
+                    if not lv or lv.lower() == 'null':
+                        del cleaned[CONF_LABEL]
+                    else:
+                        cleaned[CONF_LABEL] = lv
+                merged = {**current_opts, **cleaned}
+                # Explicitly remove keys the user blanked out (e.g. clearing a label)
+                for k, v in user_input.items():
+                    if v in (None, "") and k in merged:
+                        del merged[k]
+                return self.async_create_entry(title="", data=merged)
 
         defaults = {**entry.data, **current_opts}
         schema_fields: dict = {
+            vol.Optional(CONF_LABEL, default=defaults.get(CONF_LABEL, "")): selector.selector(
+                {"text": {}}
+            ),
             vol.Required(OPT_WATERING_INTERVAL, default=defaults.get(OPT_WATERING_INTERVAL, DEFAULT_WATERING_INTERVAL)): selector.selector(
                 {"number": {"min": 1, "max": 365, "mode": "box", "unit_of_measurement": "days"}}
             ),
