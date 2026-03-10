@@ -8,6 +8,7 @@
         "data": {
           "plant_name": "Plant name",
           "area": "Area",
+          "label": "Location label (optional)",
           "watering_interval_days": "Watering interval (days)",
           "early_watering_threshold": "Early watering threshold (times)",
           "snooze_threshold": "Snooze threshold (times)",
@@ -16,6 +17,7 @@
         "data_description": {
           "plant_name": "A friendly name for this plant.",
           "area": "Assign this plant to a Home Assistant area.",
+          "label": "Optional sublabel to group plants within an area (e.g. Left shelf, Window sill). Leave blank if not needed.",
           "watering_interval_days": "How many days between waterings.",
           "early_watering_threshold": "How many early waterings before the interval is shortened by 1 day.",
           "snooze_threshold": "How many consecutive periods snoozed before the interval is increased by 1 day.",
@@ -43,7 +45,7 @@
         }
       },
       "last_watered_custom": {
-        "title": "Last Watering — Custom Date",
+        "title": "Last Watering - Custom Date",
         "description": "Enter the date you last watered this plant.",
         "data": {
           "custom_watered_date": "Date last watered"
@@ -63,7 +65,7 @@
         }
       },
       "last_fertilized_custom": {
-        "title": "Last Fertilization — Custom Date",
+        "title": "Last Fertilization - Custom Date",
         "description": "Enter the date you last fertilized this plant.",
         "data": {
           "custom_fertilized_date": "Date last fertilized"
@@ -100,6 +102,7 @@
       "init": {
         "title": "Update Plant Settings",
         "data": {
+          "label": "Location label (optional)",
           "watering_interval_days": "Watering interval (days)",
           "early_watering_threshold": "Early watering threshold (times)",
           "snooze_threshold": "Snooze threshold (times)",
@@ -108,6 +111,9 @@
           "image_path": "Image path (/local/...)",
           "dry_threshold": "Dry threshold",
           "wet_threshold": "Wet threshold"
+        },
+        "data_description": {
+          "label": "Optional sublabel to group plants within an area (e.g. Left shelf, Window sill). Leave blank to remove."
         }
       }
     },
@@ -120,13 +126,15 @@
       "last_watered": { "name": "Last watered" },
       "next_watering": { "name": "Next watering" },
       "days_until_watering": { "name": "Days until watering" },
+      "early_watering_count": { "name": "Early watering count" },
+      "snooze_count": { "name": "Consecutive periods snoozed" },
       "last_fertilized": { "name": "Last fertilized" },
       "next_fertilized": { "name": "Next fertilization" },
       "days_until_fertilizing": { "name": "Days until fertilization" }
     },
     "button": {
       "mark_watered": { "name": "Mark watered" },
-      "snooze_watering": { "name": "Snooze watering" },
+      "snooze_watering": { "name": "Snooze today's tasks" },
       "mark_fertilized": { "name": "Mark fertilized" }
     },
     "number": {
