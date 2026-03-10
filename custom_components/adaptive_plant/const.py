@@ -15,6 +15,7 @@ CONF_IMAGE_PATH = "image_path"
 CONF_MOISTURE_SENSOR = "moisture_sensor"
 CONF_DRY_THRESHOLD = "dry_threshold"
 CONF_WET_THRESHOLD = "wet_threshold"
+CONF_LABEL = "label"
 
 # ── Config entry options keys (mutable at runtime) ─────────────────────────────
 OPT_WATERING_INTERVAL = "watering_interval_days"
