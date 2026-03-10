@@ -23,6 +23,7 @@ from .const import (
     CONF_ENABLE_NOTES,
     CONF_HEALTH_PROMPT_INTERVAL,
     CONF_IMAGE_PATH,
+    CONF_LABEL,
     CONF_MOISTURE_SENSOR,
     CONF_PLANT_NAME,
     CONF_SNOOZE_THRESHOLD,
@@ -138,6 +139,23 @@ class PlantData:
                 self._entry.data.get(OPT_FERTILIZATION_INTERVAL, DEFAULT_FERTILIZATION_INTERVAL),
             )
         )
+
+    @property
+    def label(self) -> str | None:
+        """Optional display label for grouping plants within an area (e.g. 'Left shelf').
+        Treats empty strings, whitespace-only, and the literal word 'null' as no label.
+        """
+        def _clean(val) -> str | None:
+            if not val:
+                return None
+            stripped = val.strip()
+            if not stripped or stripped.lower() == 'null':
+                return None
+            return stripped
+
+        if CONF_LABEL in self._entry.options:
+            return _clean(self._entry.options[CONF_LABEL])
+        return _clean(self._entry.data.get(CONF_LABEL))
 
     # ── Runtime state ────────────────────────────────────────────────────────────
 
@@ -257,7 +275,7 @@ class PlantData:
         else:
             early_count = 0
 
-        # Snooze streak tracking
+        # Snooze streak tracking — increments once per period at watering time
         if self.snoozed_this_period:
             snooze_count = self.snooze_count + 1
         else:
@@ -285,20 +303,39 @@ class PlantData:
         await self._persist({OPT_WATERING_INTERVAL: int(days)})
 
     async def snooze_watering(self) -> None:
-        """Push next watering forward by 1 day and flag this period as snoozed."""
+        """Push next watering (and fertilization if also due today or overdue) forward by 1 day."""
+        today = date.today()
+
         nw = self.next_watering
         if nw:
             try:
-                new_next = (date.fromisoformat(nw) + timedelta(days=1)).isoformat()
+                new_next_watering = (date.fromisoformat(nw) + timedelta(days=1)).isoformat()
             except ValueError:
-                new_next = (date.today() + timedelta(days=1)).isoformat()
+                new_next_watering = (today + timedelta(days=1)).isoformat()
         else:
-            new_next = (date.today() + timedelta(days=1)).isoformat()
+            new_next_watering = (today + timedelta(days=1)).isoformat()
 
-        await self._persist({
-            STATE_NEXT_WATERING: new_next,
+        updates = {
+            STATE_NEXT_WATERING: new_next_watering,
             STATE_SNOOZED_THIS_PERIOD: True,
-        })
+        }
+
+        # Also snooze fertilization if it is due today or overdue
+        if self.enable_fertilization:
+            nf = self.next_fertilized
+            if nf:
+                try:
+                    nf_date = date.fromisoformat(nf)
+                    if nf_date <= today:
+                        updates[STATE_NEXT_FERTILIZED] = (nf_date + timedelta(days=1)).isoformat()
+                        _LOGGER.debug(
+                            "%s: fertilization also due — snoozing to %s",
+                            self.plant_name, updates[STATE_NEXT_FERTILIZED],
+                        )
+                except ValueError:
+                    pass
+
+        await self._persist(updates)
 
     # ── Health ───────────────────────────────────────────────────────────────────
 
