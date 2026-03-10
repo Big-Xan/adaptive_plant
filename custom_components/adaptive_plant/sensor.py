@@ -6,7 +6,7 @@ from datetime import date
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
@@ -24,6 +24,8 @@ async def async_setup_entry(
         LastWateredSensor(plant, entry),
         NextWateringSensor(plant, entry),
         DaysUntilWateringSensor(plant, entry),
+        EarlyWateringCountSensor(plant, entry),
+        SnoozeCountSensor(plant, entry),
     ]
 
     if plant.enable_fertilization:
@@ -110,6 +112,14 @@ class NextWateringSensor(PlantSensorBase):
             return self._plant.image_path
         return None
 
+    @property
+    def extra_state_attributes(self) -> dict:
+        """Expose label as an attribute so the companion card can read it."""
+        attrs = {}
+        if self._plant.label:
+            attrs["label"] = self._plant.label
+        return attrs
+
 
 class DaysUntilWateringSensor(PlantSensorBase):
     _attr_translation_key = "days_until_watering"
@@ -133,6 +143,40 @@ class DaysUntilWateringSensor(PlantSensorBase):
         if days == 1:
             return "In 1 Day"
         return f"In {days} Days"
+
+
+class EarlyWateringCountSensor(PlantSensorBase):
+    """Diagnostic sensor showing how many times the plant has been watered early in the current period."""
+
+    _attr_translation_key = "early_watering_count"
+    _attr_icon = "mdi:water-plus"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_native_unit_of_measurement = "times"
+
+    def __init__(self, plant: PlantData, entry: ConfigEntry) -> None:
+        super().__init__(plant, entry)
+        self._attr_unique_id = f"{entry.entry_id}_early_watering_count"
+
+    @property
+    def native_value(self) -> int:
+        return self._plant.early_watering_count
+
+
+class SnoozeCountSensor(PlantSensorBase):
+    """Diagnostic sensor showing how many consecutive periods watering has been snoozed."""
+
+    _attr_translation_key = "snooze_count"
+    _attr_icon = "mdi:alarm-snooze"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_native_unit_of_measurement = "times"
+
+    def __init__(self, plant: PlantData, entry: ConfigEntry) -> None:
+        super().__init__(plant, entry)
+        self._attr_unique_id = f"{entry.entry_id}_snooze_count"
+
+    @property
+    def native_value(self) -> int:
+        return self._plant.snooze_count
 
 
 class LastFertilizedSensor(PlantSensorBase):
