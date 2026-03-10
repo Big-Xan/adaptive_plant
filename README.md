@@ -32,6 +32,7 @@ A fully local, event-driven Home Assistant custom integration for tracking and m
 ### 🧪 Fertilization (optional)
 - Track fertilization on a separate interval
 - Same sensor pattern as watering
+- Snoozing watering also snoozes fertilization if it is due the same day
 
 ### 💧 Moisture Sensor Integration (optional)
 - Link any existing sensor entity
@@ -44,8 +45,11 @@ A fully local, event-driven Home Assistant custom integration for tracking and m
 ### 🖼️ Plant Image (optional)
 - Attach a `/local/` image path to display on dashboard cards. Can be changed via configuration after entry is created. I recommend uploading your plant images to your `/www/` folder.
 
-### 🏠 Area Support
+### 🏠 Area & Label Support
 - Assign each plant to a Home Assistant area during setup
+- Optionally add a **label** (e.g. `Left shelf`, `Window sill`) to group plants within an area
+- Labels can be added, changed, or removed at any time via the integration's settings
+- Unlabelled plants always appear first within their area
 
 ---
 
@@ -68,12 +72,16 @@ A fully local, event-driven Home Assistant custom integration for tracking and m
 1. Go to **Settings → Devices & Services → Add Integration**
 2. Search for **Adaptive Plant**
 3. Follow the setup wizard:
-   - Plant name, area, watering interval, adaptive thresholds
+   - Plant name, area, optional label, watering interval, adaptive thresholds
    - Optional features (fertilization, notes, image, moisture sensor)
    - Last watered date (Today / Yesterday / Custom / Haven't yet)
    - Last fertilized date (if enabled)
    - Image path (if enabled)
    - Moisture thresholds (if a sensor was selected)
+
+To edit any setting after setup, go to **Settings → Devices & Services → Adaptive Plant → Configure**.
+
+> **Tip:** To remove a label after setup, open Configure and leave the label field blank, type a space and save, or type the word `null` — all are treated as no label.
 
 ---
 
@@ -86,10 +94,12 @@ Each plant creates a device with the following entities:
 | Last watered | Sensor | Date of last watering |
 | Next watering | Sensor | Scheduled next watering date |
 | Days until watering | Sensor | Human-readable countdown |
+| Early watering count | Sensor | Diagnostic — consecutive periods watered early |
+| Consecutive periods snoozed | Sensor | Diagnostic — consecutive periods snoozed before watering |
 | Health | Select | Excellent / Good / Poor / Sick |
 | Watering interval | Number | Editable interval in days |
 | Mark watered | Button | Records watering, applies adaptive logic |
-| Snooze watering | Button | Delays watering by 1 day |
+| Snooze today's tasks | Button | Delays watering (and fertilization if also due) by 1 day |
 | Last fertilized | Sensor | *(if fertilization enabled)* |
 | Next fertilization | Sensor | *(if fertilization enabled)* |
 | Days until fertilization | Sensor | *(if fertilization enabled)* |
@@ -105,7 +115,9 @@ Each plant creates a device with the following entities:
 If you press **Mark Watered** before the scheduled date, an early watering counter increments. Once it reaches the configured threshold, the watering interval is reduced by 1 day (minimum 1). The counter resets if you water on time.
 
 ### Watering interval extension
-If you press **Snooze Watering** during a watering period and then water the plant, a snooze streak counter increments. Once it reaches the configured threshold across consecutive periods, the watering interval increases by 1 day (maximum 365). The streak resets if you water without snoozing.
+If you press **Snooze today's tasks** during a watering period and then water the plant, a snooze streak counter increments. Once it reaches the configured threshold across consecutive periods, the watering interval increases by 1 day (maximum 365). The streak resets if you water without snoozing.
+
+> **Note:** Snoozing and then watering the same plant on the same day will count that period as both early and snoozed. This is a known edge case that will be addressed in a future release.
 
 ---
 
@@ -124,27 +136,40 @@ This repo includes a companion Lovelace card (`adaptive-plant-card.js`) with a f
 
 ### Card Features
 
-- **Today tab** — plants due or overdue, grouped by area. Mark watered, mark fertilized, or snooze directly from the card. Hold the button at the bottom to complete all tasks at once.
-- **Upcoming tab** — future waterings and fertilizations with a configurable day cutoff. Mark tasks early directly from the card.
-- **Overview tab** — all plants grouped by area. Expand any plant to see next watering/fertilization dates, edit health, add notes, and mark tasks complete.
+- **Today tab** — plants due or overdue, grouped by area and label. Mark watered, mark fertilized, or snooze directly from the card. Hold the button at the bottom to complete all tasks at once. The snooze button remains visible until all of a plant's tasks for the day are resolved.
+- **Upcoming tab** — future waterings and fertilizations with a configurable day cutoff. Plants with both tasks due on the same day appear as a single combined row. Mark tasks early directly from the card.
+- **Overview tab** — all plants grouped by area and label, with a configurable sort order (alphabetical, health, or days until watering). Expand any plant to see next watering/fertilization dates, edit health, add notes, and mark tasks complete.
+- **Labels** — plants with a label assigned are grouped under a sublabel header within their area, across all tabs
 - **Health ring** — colored ring around each plant avatar indicating health status, configurable per tab
+- **Transparent background** — option to hide the card background, compatible with frosted glass themes
+- **Pin hold button** — optionally fix the "Hold to complete all" button to the bottom of the card
 - **Full visual editor** — configure everything without writing YAML
 
-### Card Configuration
+### Card Configuration & Visual Editor
 
-The card is fully configurable via the visual editor — no YAML required. The card can be modified via YAML if that is your preference (scroll down)
+The card is fully configurable via the visual editor — no YAML required. The card can be modified via YAML if that is your preference (scroll down).
 
 **Default configuration (no options set):**
 
-![Adaptive Plant Card default](https://github.com/user-attachments/assets/828f9765-de57-48d6-92d3-d2b11a8e8d11)
-
-**Example with native HA icons, static height, and health ring:**
-
-![Adaptive Plant Card with MDI icons](https://github.com/user-attachments/assets/37076d4f-650b-4cd4-8fc5-b35b01203156)
+![Adaptive Plant Card default](https://github.com/user-attachments/assets/03479b87-4574-423d-874c-464850223834)
 ```yaml
 type: custom:adaptive-plant-card
-height: 725
-upcoming_days: 21
+```
+
+**Using native HA mdi icons, centered in-room labels with color changed to gold, height max set with mark all tasks completed button pinned to the bottom of the card so it's always in the same place.:**
+
+![Adaptive Plant Card with MDI icons](https://github.com/user-attachments/assets/27e1bb06-9ece-4d09-9fa4-999f80cbdd84)
+```yaml
+type: custom:adaptive-plant-card
+label_align: center
+label_color: gold
+height: 750
+pin_hold_button: true
+health:
+  ring: true
+  text: false
+  colors:
+    Excellent: "#7cb97e"
 icons:
   water: mdi:water
   water_color: "#64b4ff"
@@ -156,18 +181,13 @@ icons:
   fertilize_done_color: "#7cb97e"
   water_done: mdi:check
   water_done_color: "#64b4ff"
-health:
-  ring_width: 2
 ```
 
-**Visual editor:**
-
-![Adaptive Plant Card visual editor](https://github.com/user-attachments/assets/445aabd9-cc83-4858-a7ea-e2f3e7a937e5)
-
-For full YAML configuration reference:
+**For full YAML configuration reference:**
 
 ```yaml
 type: custom:adaptive-plant-card
+
 # Layout
 height: 500               # optional — enables internal scroll
 width: 400                # optional
@@ -180,6 +200,18 @@ show_overview: true
 # Schedule
 upcoming_days: 14         # how many days ahead to show (default: 30)
 overdue_color: '#e05c5c'  # color for overdue chips and indicators
+
+# Card appearance
+show_background: true     # set false for transparent/frosted glass themes
+pin_hold_button: false    # set true to fix hold bar to bottom of card
+
+# Overview sort order
+overview_sort: alphabetical   # alphabetical | health | watering
+
+# Label appearance
+label_align: left         # left | center | right
+label_padding: 20         # px offset from the chosen edge
+label_color: '#666666'    # optional — defaults to --secondary-text-color
 
 # Health ring & text
 health:
@@ -210,7 +242,7 @@ icons:
   water_done_color: '#64b4ff'
 ```
 
-All options are... well they're optional — omit any to use defaults.
+All options are optional — omit any to use defaults.
 
 ---
 
