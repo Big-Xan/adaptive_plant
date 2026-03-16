@@ -6,6 +6,17 @@ A fully local, event-driven Home Assistant custom integration for tracking and m
 ![HA Version](https://img.shields.io/badge/HA-2024.6%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
+## 📋 Blueprint
+
+A companion blueprint for task reminders is included in this repo.
+
+[![Import Blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://raw.githubusercontent.com/Big-Xan/adaptive_plant/main/blueprints/automation/adaptive_plant/plant_task_reminders.yaml)
+
+Or manually import via **Settings → Automations & Scenes → Blueprints → Import Blueprint** and paste:
+```
+https://raw.githubusercontent.com/Big-Xan/adaptive_plant/main/blueprints/automation/adaptive_plant/plant_task_reminders.yaml
+```
+
 ---
 ## Contents
 - [Features](#features)
@@ -242,7 +253,7 @@ icons:
   water_done_color: '#64b4ff'
 ```
 
-All options are optional — omit any to use defaults.
+All options are... well they're optional — omit any to use defaults.
 
 ---
 
