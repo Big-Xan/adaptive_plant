@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import date
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import Event, HomeAssistant
@@ -17,6 +18,7 @@ from .const import (
     DOMAIN,
     OPT_WATERING_INTERVAL,
     PLATFORMS,
+    STATE_HEALTH_LAST_UPDATED,
     STATE_LAST_FERTILIZED,
     STATE_LAST_WATERED,
     STATE_NEXT_FERTILIZED,
@@ -51,9 +53,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         initial_options[STATE_NEXT_FERTILIZED] = next_fertilized
         seeded = True
 
-    # Also seed watering interval from data into options if not already there
+    # Seed watering interval from data into options if not already there
     if OPT_WATERING_INTERVAL not in initial_options and OPT_WATERING_INTERVAL in entry.data:
         initial_options[OPT_WATERING_INTERVAL] = entry.data[OPT_WATERING_INTERVAL]
+        seeded = True
+
+    # Seed health_last_updated on first load so fresh plants don't immediately
+    # trigger a health reminder notification on their first daily rollover.
+    if STATE_HEALTH_LAST_UPDATED not in initial_options:
+        initial_options[STATE_HEALTH_LAST_UPDATED] = date.today().isoformat()
         seeded = True
 
     if seeded:
