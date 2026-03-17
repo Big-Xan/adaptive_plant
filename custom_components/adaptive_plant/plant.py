@@ -222,6 +222,18 @@ class PlantData:
         except ValueError:
             return None
 
+    @property
+    def health_check_in_overdue(self) -> bool:
+        """True if the health check-in interval has been exceeded."""
+        health_updated_str = self.health_last_updated
+        if not health_updated_str:
+            return True
+        try:
+            days_since = (date.today() - date.fromisoformat(health_updated_str)).days
+            return days_since >= self.health_prompt_interval
+        except ValueError:
+            return True
+
     # ── Listeners ────────────────────────────────────────────────────────────────
 
     def add_listener(self, callback: Callable[[], None]) -> None:
@@ -343,10 +355,26 @@ class PlantData:
         if value not in HEALTH_OPTIONS:
             _LOGGER.warning("%s: invalid health value '%s' — ignored", self.plant_name, value)
             return
-        await self._persist({
+        # Always write timestamp even if value unchanged — resets the reminder
+        # clock when user confirms current status without changing it.
+        current = self._entry.options
+        merged = {
+            **current,
             STATE_HEALTH: value,
             STATE_HEALTH_LAST_UPDATED: date.today().isoformat(),
-        })
+        }
+        self._hass.config_entries.async_update_entry(self._entry, options=merged)
+        self._notify_listeners()
+
+    async def confirm_health(self) -> None:
+        """Reset the health check-in clock without changing the health value."""
+        current = self._entry.options
+        merged = {
+            **current,
+            STATE_HEALTH_LAST_UPDATED: date.today().isoformat(),
+        }
+        self._hass.config_entries.async_update_entry(self._entry, options=merged)
+        self._notify_listeners()
 
     # ── Fertilization ────────────────────────────────────────────────────────────
 
@@ -371,25 +399,44 @@ class PlantData:
     async def daily_rollover(self) -> None:
         today = date.today()
         health_updated_str = self.health_last_updated
+        needs_notification = False
+
         if health_updated_str:
             try:
                 days_since = (today - date.fromisoformat(health_updated_str)).days
                 if days_since >= self.health_prompt_interval:
-                    self._fire_health_notification(days_since)
+                    needs_notification = True
             except ValueError:
-                self._fire_health_notification(None)
+                needs_notification = True
         else:
-            self._fire_health_notification(None)
+            needs_notification = True
+
+        if needs_notification:
+            # Only fire once per day — compare last notified date to prevent
+            # daily re-fire until the user presses Confirm Health.
+            last_notified = self._entry.options.get("_health_notif_date")
+            if last_notified != today.isoformat():
+                days_since_val = None
+                if health_updated_str:
+                    try:
+                        days_since_val = (today - date.fromisoformat(health_updated_str)).days
+                    except ValueError:
+                        pass
+                self._fire_health_notification(days_since_val)
+                await self._persist({"_health_notif_date": today.isoformat()})
+
         self._notify_listeners()
 
     def _fire_health_notification(self, days_since: int | None) -> None:
         body = (
-            f"**{self.plant_name}** hasn't had a health update in "
-            f"{days_since} day(s). Current status: **{self.health}**. "
-            "Please update its health status in Home Assistant."
+            f"**{self.plant_name}** hasn't had a health check-in in "
+            f"{days_since} day(s). Current status: **{self.health}**.\n\n"
+            "Open the plant card and press **Confirm Health** when done.\n\n"
+            "**Dismiss after updating plant health.**"
             if days_since is not None
-            else f"**{self.plant_name}** has never had a health status recorded. "
-            "Please set its health status in Home Assistant."
+            else f"**{self.plant_name}** has never had a health check-in recorded.\n\n"
+            "Open the plant card and press **Confirm Health** when done.\n\n"
+            "**Dismiss after updating plant health.**"
         )
         pn_async_create(
             self._hass,
