@@ -1,4 +1,4 @@
-// Adaptive Plant Card v7
+// Adaptive Plant Card v9
 
 class AdaptivePlantCard extends HTMLElement {
   constructor() {
@@ -10,6 +10,7 @@ class AdaptivePlantCard extends HTMLElement {
     this._holdRaf      = null;
     this._holding      = false;
     this._initialized  = false;
+    this._selectOpen   = false;
   }
 
   static getConfigElement() { return document.createElement('adaptive-plant-card-editor'); }
@@ -29,19 +30,25 @@ class AdaptivePlantCard extends HTMLElement {
                              ? config.label_padding : null;
     this._labelColor     = config.label_color     || null;
     this._overviewSort   = config.overview_sort   || 'alphabetical';
+    this._areaHeaderSize  = config.area_header_size  || null;
+    this._areaHeaderColor = config.area_header_color || null;
+    this._labelHeaderSize = config.label_header_size || null;
 
     var ic = config.icons || {};
     this._icons = {
-      water:                ic.water                || '💧',
-      water_color:          ic.water_color          || '#64b4ff',
-      fertilize:            ic.fertilize            || '🌸',
-      fertilize_color:      ic.fertilize_color      || '#7cb97e',
-      snooze:               ic.snooze               || '🔔',
-      snooze_color:         ic.snooze_color         || '#aaaaaa',
-      fertilize_done:       ic.fertilize_done       || '✅',
-      fertilize_done_color: ic.fertilize_done_color || '#7cb97e',
-      water_done:           ic.water_done           || '✔',
-      water_done_color:     ic.water_done_color     || '#64b4ff',
+      water:                        ic.water                        || '💧',
+      water_color:                  ic.water_color                  || '#64b4ff',
+      fertilize:                    ic.fertilize                    || '🌸',
+      fertilize_color:              ic.fertilize_color              || '#7cb97e',
+      snooze:                       ic.snooze                       || '🔔',
+      snooze_color:                 ic.snooze_color                 || '#aaaaaa',
+      fertilize_done:               ic.fertilize_done               || '✅',
+      fertilize_done_color:         ic.fertilize_done_color         || '#7cb97e',
+      water_done:                   ic.water_done                   || '✔',
+      water_done_color:             ic.water_done_color             || '#64b4ff',
+      health_confirm:               ic.health_confirm               || 'mdi:cards-heart',
+      health_confirm_color:         ic.health_confirm_color         || '#aaaaaa',
+      health_confirm_overdue_color: ic.health_confirm_overdue_color || '#e05c5c',
     };
 
     var h  = config.health        || {};
@@ -76,7 +83,7 @@ class AdaptivePlantCard extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
     if (!this._initialized) { this._bootstrapShell(); this._initialized = true; }
-    if (!this._holding) this._updateContent();
+    if (!this._holding && !this._selectOpen) this._updateContent();
   }
 
   _showRing(tab) { var o = this._health['ring_' + tab]; return o !== null ? o : this._health.ring; }
@@ -182,7 +189,17 @@ class AdaptivePlantCard extends HTMLElement {
       });
     });
     root.querySelectorAll('[data-health-entity]').forEach(function(el) {
-      el.addEventListener('change',    function(e) { e.stopPropagation(); self._selectOption(el.dataset.healthEntity, el.value); });
+      el.addEventListener('focus', function() {
+        self._selectOpen = true;
+      });
+      el.addEventListener('blur', function() {
+        self._selectOpen = false;
+      });
+      el.addEventListener('change', function(e) {
+        e.stopPropagation();
+        self._selectOpen = false;
+        self._selectOption(el.dataset.healthEntity, el.value);
+      });
       el.addEventListener('click',     function(e) { e.stopPropagation(); });
       el.addEventListener('mousedown', function(e) { e.stopPropagation(); });
     });
@@ -227,25 +244,29 @@ class AdaptivePlantCard extends HTMLElement {
       var areaName = dev.area_id ? ((hass.areas && hass.areas[dev.area_id] && hass.areas[dev.area_id].name) || 'No Area') : 'No Area';
       var find = function(s) { return devIds.find(function(id) { return id.endsWith(s); }); };
       var st   = function(s) { var fid = find(s); return fid ? hass.states[fid] : null; };
-      var nwSt = st('_next_watering');
-      var nwAt = nwSt && nwSt.attributes ? nwSt.attributes : {};
+      var nwSt   = st('_next_watering');
+      var nwAt   = nwSt && nwSt.attributes ? nwSt.attributes : {};
+      var hlthSt = st('_health');
+      var hlthAt = hlthSt && hlthSt.attributes ? hlthSt.attributes : {};
       return {
-        id:             devId,
-        name:           dev.name_by_user || dev.name || 'Plant',
-        area:           areaName,
-        label:          nwAt.label || null,
-        image:          nwAt.entity_picture || null,
-        nextWatering:   nwSt  ? nwSt.state  : null,
-        daysWater:      st('_days_until_watering')   ? st('_days_until_watering').state   : null,
-        nextFertilized: st('_next_fertilization')    ? st('_next_fertilization').state    : null,
-        daysFert:       st('_days_until_fertilization') ? st('_days_until_fertilization').state : null,
-        health:         st('_health') ? st('_health').state : null,
-        healthEntityId: find('_health'),
-        notes:          (st('_notes') && st('_notes').state) ? st('_notes').state : '',
-        notesEntityId:  find('_notes'),
-        btnWater:       find('_mark_watered'),
-        btnSnooze:      find('_snooze_today_s_tasks'),
-        btnFert:        find('_mark_fertilized'),
+        id:                   devId,
+        name:                 dev.name_by_user || dev.name || 'Plant',
+        area:                 areaName,
+        label:                nwAt.label || null,
+        image:                nwAt.entity_picture || null,
+        nextWatering:         nwSt   ? nwSt.state   : null,
+        daysWater:            st('_days_until_watering')      ? st('_days_until_watering').state      : null,
+        nextFertilized:       st('_next_fertilization')       ? st('_next_fertilization').state       : null,
+        daysFert:             st('_days_until_fertilization') ? st('_days_until_fertilization').state : null,
+        health:               hlthSt ? hlthSt.state : null,
+        healthEntityId:       find('_health'),
+        healthCheckInOverdue: hlthAt.health_check_in_overdue === true,
+        notes:                (st('_notes') && st('_notes').state) ? st('_notes').state : '',
+        notesEntityId:        find('_notes'),
+        btnWater:             find('_mark_watered'),
+        btnSnooze:            find('_snooze_today_s_tasks'),
+        btnFert:              find('_mark_fertilized'),
+        btnConfirmHealth:     find('_confirm_health'),
       };
     }).sort(function(a, b) { return a.name.localeCompare(b.name); });
   }
@@ -310,6 +331,18 @@ class AdaptivePlantCard extends HTMLElement {
     return '<button class="action-btn ' + cls + '" data-entity="' + entity + '" title="' + title + '">' + icon + '</button>';
   }
 
+  _confirmHealthBtn(p) {
+    var overdue = p.healthCheckInOverdue;
+    var color   = overdue ? this._icons.health_confirm_overdue_color : this._icons.health_confirm_color;
+    var label   = overdue ? 'Update Due' : 'Confirm Health';
+    var icon    = this._renderIcon(this._icons.health_confirm, color, '15px');
+    var bgAlpha = '26';
+    var bg      = color + bgAlpha;
+    return '<button class="detail-btn btn-health" style="color:' + color + ';background:' + bg + ';" data-entity="' + p.btnConfirmHealth + '">' +
+      icon + ' ' + label +
+    '</button>';
+  }
+
   _renderToday(plants) {
     var self     = this;
     var waterDue = plants.filter(function(p) { return self._isUrgent(p.daysWater); });
@@ -341,7 +374,7 @@ class AdaptivePlantCard extends HTMLElement {
               '<div class="chips">' + (wu ? self._waterChip(p.daysWater) : '') + (fu ? self._fertChip(p.daysFert) : '') + '</div>' +
             '</div>' +
             '<div class="row-actions">' +
-              (( wu || fu) && p.btnSnooze ? self._actionBtn('btn-snooze', p.btnSnooze, 'snooze',         'snooze_color',         "Snooze today's tasks") : '') +
+              ((wu || fu) && p.btnSnooze ? self._actionBtn('btn-snooze', p.btnSnooze, 'snooze',         'snooze_color',         "Snooze today's tasks") : '') +
               (fu && p.btnFert   ? self._actionBtn('btn-fert',   p.btnFert,   'fertilize_done', 'fertilize_done_color', 'Mark fertilized')       : '') +
               (wu && p.btnWater  ? self._actionBtn('btn-water',  p.btnWater,  'water_done',     'water_done_color',     'Mark watered')          : '') +
             '</div>' +
@@ -442,7 +475,6 @@ class AdaptivePlantCard extends HTMLElement {
         if (wa !== wb) return wa - wb;
         return a.name.localeCompare(b.name);
       }
-      // alphabetical (default)
       return a.name.localeCompare(b.name);
     });
     var byArea = this._groupByArea(sorted);
@@ -452,10 +484,10 @@ class AdaptivePlantCard extends HTMLElement {
         var lk  = e[0]; var lps = e[1];
         var hdr = lk ? '<div class="label-sub-header">' + lk + '</div>' : '';
         var rows = lps.map(function(p) {
-          var isExp  = self._expanded === p.id;
-          var urgent = self._isUrgent(p.daysWater) || self._isUrgent(p.daysFert);
+          var isExp   = self._expanded === p.id;
+          var urgent  = self._isUrgent(p.daysWater) || self._isUrgent(p.daysFert);
           var showTxt = self._showText('overview');
-          var hopts  = ['Excellent','Good','Poor','Sick'];
+          var hopts   = ['Excellent','Good','Poor','Sick'];
           var row = '<div class="plant-row plant-row-click" data-expand="' + p.id + '">' +
             self._avatar(p, 'overview') +
             '<div class="plant-info">' +
@@ -493,8 +525,9 @@ class AdaptivePlantCard extends HTMLElement {
               '</select></div>' : '') +
             notesHtml +
             '<div class="detail-actions">' +
-              (p.btnWater ? '<button class="detail-btn btn-water" data-entity="' + p.btnWater + '">' + self._renderIcon(self._icons.water,     self._icons.water_color,     '15px') + ' Mark Watered</button>' : '') +
-              (p.btnFert  ? '<button class="detail-btn btn-fert"  data-entity="' + p.btnFert  + '">' + self._renderIcon(self._icons.fertilize, self._icons.fertilize_color, '15px') + ' Mark Fertilized</button>' : '') +
+              (p.btnWater         ? '<button class="detail-btn btn-water"  data-entity="' + p.btnWater        + '">' + self._renderIcon(self._icons.water,     self._icons.water_color,     '15px') + ' Mark Watered</button>'    : '') +
+              (p.btnFert          ? '<button class="detail-btn btn-fert"   data-entity="' + p.btnFert         + '">' + self._renderIcon(self._icons.fertilize, self._icons.fertilize_color, '15px') + ' Mark Fertilized</button>' : '') +
+              (p.btnConfirmHealth ? self._confirmHealthBtn(p) : '') +
             '</div>' +
           '</div>';
           return row + detail;
@@ -546,7 +579,8 @@ class AdaptivePlantCard extends HTMLElement {
     var padding = this._labelPadding;
     var hasPad  = (padding !== null && padding !== undefined);
     var color   = this._labelColor ? this._labelColor : 'var(--secondary-text-color,#666)';
-    var base    = 'font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:' + color + ';';
+    var size    = this._labelHeaderSize ? this._labelHeaderSize + 'px' : '11px';
+    var base    = 'font-size:' + size + ';font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:' + color + ';';
     if (align === 'center') return base + 'padding:6px 16px 2px;text-align:center;';
     if (align === 'right')  return base + 'padding:6px ' + (hasPad ? padding + 'px' : '16px') + ' 2px 16px;text-align:right;';
     return base + 'padding:6px 16px 2px ' + (hasPad ? padding + 'px' : '20px') + ';text-align:left;';
@@ -581,7 +615,7 @@ class AdaptivePlantCard extends HTMLElement {
       '.hold-track{fill:none;stroke:rgba(124,185,126,0.2);stroke-width:2.5;}',
       '.hold-fill{fill:none;stroke:#7cb97e;stroke-width:2.5;stroke-linecap:round;}',
       '.area-group{margin-bottom:4px;}.day-group{margin-bottom:16px;}.area-subgroup{margin-bottom:2px;}',
-      '.area-header{padding:12px 16px 4px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--secondary-text-color,#888);}',
+      '.area-header{padding:12px 16px 4px;font-size:' + (this._areaHeaderSize ? this._areaHeaderSize + 'px' : '12px') + ';font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:' + (this._areaHeaderColor ? this._areaHeaderColor : 'var(--secondary-text-color,#888)') + ';}',
       '.day-header{padding:10px 16px 2px;font-size:16px;font-weight:700;}',
       '.area-sub-header{padding:4px 16px 2px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--secondary-text-color,#555);}',
       '.label-sub-header{' + this._labelSubHeaderCss() + '}',
@@ -614,7 +648,9 @@ class AdaptivePlantCard extends HTMLElement {
       '.notes-save{background:#7cb97e;color:#fff;}.notes-cancel{background:rgba(255,255,255,0.08);color:#aaa;}',
       '.detail-actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;}',
       '.detail-btn{padding:7px 14px;border-radius:20px;border:none;cursor:pointer;font-size:13px;font-weight:500;display:inline-flex;align-items:center;gap:5px;transition:filter 0.15s;}',
-      '.detail-btn.btn-water{background:rgba(100,180,255,0.15);color:#64b4ff;}.detail-btn.btn-fert{background:rgba(124,185,126,0.15);color:#7cb97e;}.detail-btn:hover{filter:brightness(1.25);}',
+      '.detail-btn.btn-water{background:rgba(100,180,255,0.15);color:#64b4ff;}.detail-btn.btn-fert{background:rgba(124,185,126,0.15);color:#7cb97e;}',
+      '.detail-btn.btn-health{transition:filter 0.15s;}',
+      '.detail-btn:hover{filter:brightness(1.25);}',
       '.empty{display:flex;flex-direction:column;align-items:center;padding:48px 16px;color:var(--secondary-text-color,#888);gap:8px;}',
       '.empty-icon{font-size:36px;}.empty p{margin:0;font-size:14px;}',
     ].join('');
@@ -725,6 +761,16 @@ class AdaptivePlantCardEditor extends HTMLElement {
       '<div class="field-row">' +
         this._textField('Height (px)', 'height', this._get('height', ''), 'e.g. 500', 'number') +
         this._textField('Width (px)',  'width',  this._get('width',  ''), 'e.g. 400', 'number') +
+      '</div>' +
+      '<div class="field-group"><div class="field-label">Area header</div>' +
+        '<div class="field-row">' +
+          this._textField('Font size (px)', 'area_header_size',  this._get('area_header_size',  ''), 'e.g. 12', 'number') +
+          this._colorField('Color',         'area_header_color', this._get('area_header_color', '#888888')) +
+        '</div>' +
+      '</div>' +
+      '<div class="field-group"><div class="field-label">Label sub-header</div>' +
+        '<div class="field-hint">Color is configured in the Label alignment section above.</div>' +
+        this._textField('Font size (px)', 'label_header_size', this._get('label_header_size', ''), 'e.g. 11', 'number') +
       '</div>';
   }
 
@@ -780,11 +826,16 @@ class AdaptivePlantCardEditor extends HTMLElement {
         self._textField('Icon', ip, self._get(ip, di), di) + self._colorField('Color', cp, self._get(cp, dc)) +
       '</div></div>';
     };
-    return row('💧 Water chip',     'icons.water',          'icons.water_color',          '💧', '#64b4ff') +
-           row('🌸 Fertilize chip', 'icons.fertilize',      'icons.fertilize_color',      '🌸', '#7cb97e') +
-           row('🔔 Snooze button',  'icons.snooze',         'icons.snooze_color',         '🔔', '#aaaaaa') +
-           row('✅ Fertilize done', 'icons.fertilize_done', 'icons.fertilize_done_color', '✅', '#7cb97e') +
-           row('✔ Water done',      'icons.water_done',     'icons.water_done_color',     '✔',  '#64b4ff');
+    return row('Water chip',          'icons.water',                        'icons.water_color',                  '💧',              '#64b4ff') +
+           row('Fertilize chip',      'icons.fertilize',                    'icons.fertilize_color',              '🌸',              '#7cb97e') +
+           row('Snooze button',       'icons.snooze',                       'icons.snooze_color',                 '🔔',              '#aaaaaa') +
+           row('Fertilize done',      'icons.fertilize_done',               'icons.fertilize_done_color',         '✅',              '#7cb97e') +
+           row('Water done',          'icons.water_done',                   'icons.water_done_color',             '✔',               '#64b4ff') +
+           row('Confirm Health',      'icons.health_confirm',               'icons.health_confirm_color',         'mdi:cards-heart', '#aaaaaa') +
+           '<div class="icon-row"><span class="icon-label">Update Due color</span><div class="icon-inputs">' +
+             '<div class="field-hint" style="margin:0;grid-column:1/-1;">Color used for both icon and button when a health check-in is overdue.</div>' +
+             self._colorField('Overdue color', 'icons.health_confirm_overdue_color', self._get('icons.health_confirm_overdue_color', '#e05c5c')) +
+           '</div></div>';
   }
 
   _toggle(label, path, value) {
