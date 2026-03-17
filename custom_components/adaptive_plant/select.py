@@ -47,6 +47,15 @@ class HealthSelect(SelectEntity):
     def current_option(self) -> str:
         return self._plant.health
 
+    @property
+    def extra_state_attributes(self) -> dict:
+        """Expose health timing data for the companion card overdue indicator."""
+        return {
+            "health_last_updated": self._plant.health_last_updated,
+            "health_prompt_interval": self._plant.health_prompt_interval,
+            "health_check_in_overdue": self._plant.health_check_in_overdue,
+        }
+
     async def async_added_to_hass(self) -> None:
         self._plant.add_listener(self._on_plant_update)
 
