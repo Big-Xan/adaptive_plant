@@ -21,6 +21,7 @@ async def async_setup_entry(
     entities: list[PlantButtonBase] = [
         MarkWateredButton(plant, entry),
         SnoozeWateringButton(plant, entry),
+        ConfirmHealthButton(plant, entry),
     ]
 
     if plant.enable_fertilization:
@@ -89,3 +90,17 @@ class MarkFertilizedButton(PlantButtonBase):
 
     async def async_press(self) -> None:
         await self._plant.mark_fertilized()
+
+
+class ConfirmHealthButton(PlantButtonBase):
+    """Button that resets the health check-in clock without changing the health value."""
+
+    _attr_translation_key = "confirm_health"
+    _attr_icon = "mdi:cards-heart"
+
+    def __init__(self, plant: PlantData, entry: ConfigEntry) -> None:
+        super().__init__(plant, entry)
+        self._attr_unique_id = f"{entry.entry_id}_confirm_health"
+
+    async def async_press(self) -> None:
+        await self._plant.confirm_health()
