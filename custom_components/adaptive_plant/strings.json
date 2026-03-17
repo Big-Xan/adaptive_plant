@@ -21,7 +21,7 @@
           "watering_interval_days": "How many days between waterings.",
           "early_watering_threshold": "How many early waterings before the interval is shortened by 1 day.",
           "snooze_threshold": "How many consecutive periods snoozed before the interval is increased by 1 day.",
-          "health_prompt_interval_days": "How many days before a health-check notification is sent."
+          "health_prompt_interval_days": "How many days before a health check-in notification is sent."
         }
       },
       "features": {
@@ -135,7 +135,8 @@
     "button": {
       "mark_watered": { "name": "Mark watered" },
       "snooze_watering": { "name": "Snooze today's tasks" },
-      "mark_fertilized": { "name": "Mark fertilized" }
+      "mark_fertilized": { "name": "Mark fertilized" },
+      "confirm_health": { "name": "Confirm health" }
     },
     "number": {
       "watering_interval_days": { "name": "Watering interval" },
