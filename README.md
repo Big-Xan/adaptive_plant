@@ -1,21 +1,10 @@
 # 🌱 Adaptive Plant
 
-A fully local, event-driven Home Assistant custom integration for tracking and managing your plants — with intelligent adaptive watering logic that learns your plants' needs over time. Includes a companion Lovelace card with a full visual editor.
+A fully local, event-driven Home Assistant custom integration for tracking and managing your plants — with intelligent adaptive watering logic that learns your plants' needs over time. Includes a companion Lovelace card with a full visual editor and a task reminder blueprint for Companion App notifications.
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 ![HA Version](https://img.shields.io/badge/HA-2024.6%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
-
-## 📋 Blueprint
-
-A companion blueprint for task reminders is included in this repo.
-
-[![Import Blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://raw.githubusercontent.com/Big-Xan/adaptive_plant/main/blueprints/automation/adaptive_plant/plant_task_reminders.yaml)
-
-Or manually import via **Settings → Automations & Scenes → Blueprints → Import Blueprint** and paste:
-```
-https://raw.githubusercontent.com/Big-Xan/adaptive_plant/main/blueprints/automation/adaptive_plant/plant_task_reminders.yaml
-```
 
 ---
 ## Contents
@@ -25,6 +14,7 @@ https://raw.githubusercontent.com/Big-Xan/adaptive_plant/main/blueprints/automat
 - [Entities](#entities)
 - [Adaptive Logic](#adaptive-logic)
 - [Companion Lovelace Card](#-companion-lovelace-card)
+- [Task Reminder Blueprint](#-task-reminder-blueprint)
 ---
 
 ## Features
@@ -38,7 +28,8 @@ https://raw.githubusercontent.com/Big-Xan/adaptive_plant/main/blueprints/automat
 
 ### 🌿 Plant Health
 - Health select entity: `Excellent`, `Good`, `Poor`, `Sick`
-- Configurable reminder notifications if health hasn't been updated recently
+- Configurable reminder notifications if health hasn't been checked recently
+- **Confirm Health** button — press to confirm you've checked on your plant without needing to change the health value. Resets the check-in clock.
 
 ### 🧪 Fertilization (optional)
 - Track fertilization on a separate interval
@@ -111,6 +102,7 @@ Each plant creates a device with the following entities:
 | Watering interval | Number | Editable interval in days |
 | Mark watered | Button | Records watering, applies adaptive logic |
 | Snooze today's tasks | Button | Delays watering (and fertilization if also due) by 1 day |
+| Confirm health | Button | Resets the health check-in clock without changing the health value |
 | Last fertilized | Sensor | *(if fertilization enabled)* |
 | Next fertilization | Sensor | *(if fertilization enabled)* |
 | Days until fertilization | Sensor | *(if fertilization enabled)* |
@@ -145,13 +137,16 @@ This repo includes a companion Lovelace card (`adaptive-plant-card.js`) with a f
 3. Hard refresh your browser (Ctrl+Shift+R / Cmd+Shift+R)
 4. Add a new card and search for **Adaptive Plant Card**
 
+> **Tip:** If you update the card and don't see changes, append `?v=2` (or any number) to the resource URL in **Settings → Dashboards → Resources** to force a cache refresh.
+
 ### Card Features
 
 - **Today tab** — plants due or overdue, grouped by area and label. Mark watered, mark fertilized, or snooze directly from the card. Hold the button at the bottom to complete all tasks at once. The snooze button remains visible until all of a plant's tasks for the day are resolved.
 - **Upcoming tab** — future waterings and fertilizations with a configurable day cutoff. Plants with both tasks due on the same day appear as a single combined row. Mark tasks early directly from the card.
-- **Overview tab** — all plants grouped by area and label, with a configurable sort order (alphabetical, health, or days until watering). Expand any plant to see next watering/fertilization dates, edit health, add notes, and mark tasks complete.
+- **Overview tab** — all plants grouped by area and label, with a configurable sort order (alphabetical, health, or days until watering). Expand any plant to see next watering/fertilization dates, edit health, add notes, confirm health check-in, and mark tasks complete.
 - **Labels** — plants with a label assigned are grouped under a sublabel header within their area, across all tabs
 - **Health ring** — colored ring around each plant avatar indicating health status, configurable per tab
+- **Confirm Health button** — always visible in the Overview expanded detail. Shows a heart icon and reads "Update Due" when a health check-in is overdue. Color configurable.
 - **Transparent background** — option to hide the card background, compatible with frosted glass themes
 - **Pin hold button** — optionally fix the "Hold to complete all" button to the bottom of the card
 - **Full visual editor** — configure everything without writing YAML
@@ -195,7 +190,6 @@ icons:
 ```
 
 **For full YAML configuration reference:**
-
 ```yaml
 type: custom:adaptive-plant-card
 
@@ -224,6 +218,12 @@ label_align: left         # left | center | right
 label_padding: 20         # px offset from the chosen edge
 label_color: '#666666'    # optional — defaults to --secondary-text-color
 
+# Area & label header sizing
+area_header_size: 12      # optional — font size in px for area name headers
+area_header_color: '#888888'  # optional — color for area name headers
+label_header_size: 11     # optional — font size in px for label sub-headers
+                          # label_header color is set via label_color above
+
 # Health ring & text
 health:
   ring: true              # show health ring globally (default: true)
@@ -251,11 +251,25 @@ icons:
   fertilize_done_color: '#7cb97e'
   water_done: '✔'
   water_done_color: '#64b4ff'
+  health_confirm: 'mdi:cards-heart'       # icon for Confirm Health button
+  health_confirm_color: '#aaaaaa'         # color when check-in is not overdue
+  health_confirm_overdue_color: '#e05c5c' # color when check-in is overdue
 ```
 
-All options are... well they're optional — omit any to use defaults.
+All options are... they're optional — omit any to use defaults.
 
 ---
+
+## 📋 Task Reminder Blueprint
+
+A companion blueprint for daily plant task reminders is included in this repo. Sends a single combined notification when any of your plants have watering or fertilization tasks due or overdue — automatically discovering all plants without any manual configuration. Supports up to three daily reminder times, customizable notification text, an optional task count summary (e.g. "4 Waterings and 2 Fertilizations"), and a tap action to open your plant dashboard directly. Plants can be individually excluded from watering or fertilization reminders. Compatible with the Home Assistant Companion App (iOS and Android).
+
+[![Import Blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://raw.githubusercontent.com/Big-Xan/adaptive_plant/main/blueprints/automation/adaptive_plant/plant_task_reminders.yaml)
+
+Or manually import via **Settings → Automations & Scenes → Blueprints → Import Blueprint** and paste:
+```
+https://raw.githubusercontent.com/Big-Xan/adaptive_plant/main/blueprints/automation/adaptive_plant/plant_task_reminders.yaml
+```
 
 ## Privacy & Security
 
