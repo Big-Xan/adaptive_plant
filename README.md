@@ -40,6 +40,7 @@ A fully local, event-driven Home Assistant custom integration for tracking and m
 - Link any existing sensor entity
 - Automatically reschedule watering if soil is dry
 - Automatically mark as watered if soil is saturated
+- Adaptive watering logic is disabled for moisture sensor plants — the sensor drives watering decisions, the schedule acts as a fallback only
 
 ### 📝 Notes (optional)
 - Free-form text field stored per plant
@@ -157,7 +158,7 @@ The card is fully configurable via the visual editor — no YAML required. The c
 
 **Default configuration (no options set):**
 
-![Adaptive Plant Card default](https://github.com/user-attachments/assets/03479b87-4574-423d-874c-464850223834)
+![Adaptive Plant Card default](https://github.com/user-attachments/assets/197cb184-1b00-4dc0-9916-2c4cfced9315)
 ```yaml
 type: custom:adaptive-plant-card
 ```
