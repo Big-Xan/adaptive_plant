@@ -267,39 +267,41 @@ class PlantData:
         interval = self.watering_interval
         early_count = self.early_watering_count
 
-        next_watering_str = self.next_watering
-        if next_watering_str:
-            try:
-                scheduled = date.fromisoformat(next_watering_str)
-                if today < scheduled:
-                    early_count += 1
-                    if early_count >= self.early_watering_threshold:
-                        interval = max(1, interval - 1)
+        # Adaptive interval reduction is skipped for moisture sensor plants —
+        # the sensor drives watering decisions, schedule is a fallback only.
+        if not self.moisture_sensor:
+            next_watering_str = self.next_watering
+            if next_watering_str:
+                try:
+                    scheduled = date.fromisoformat(next_watering_str)
+                    if today < scheduled:
+                        early_count += 1
+                        if early_count >= self.early_watering_threshold:
+                            interval = max(1, interval - 1)
+                            early_count = 0
+                            _LOGGER.debug(
+                                "%s: early watering threshold reached — interval reduced to %d days",
+                                self.plant_name, interval,
+                            )
+                    else:
                         early_count = 0
-                        _LOGGER.debug(
-                            "%s: early watering threshold reached — interval reduced to %d days",
-                            self.plant_name, interval,
-                        )
-                else:
+                except ValueError:
                     early_count = 0
-            except ValueError:
+            else:
                 early_count = 0
-        else:
-            early_count = 0
 
-        # Snooze streak tracking — increments once per period at watering time
-        if self.snoozed_this_period:
-            snooze_count = self.snooze_count + 1
-        else:
-            snooze_count = 0
-
-        if snooze_count >= self.snooze_threshold:
-            interval = min(365, interval + 1)
-            snooze_count = 0
-            _LOGGER.debug(
-                "%s: snooze threshold reached — interval increased to %d days",
-                self.plant_name, interval,
-            )
+        # Snooze streak tracking — skipped for moisture sensor plants.
+        snooze_count = 0
+        if not self.moisture_sensor:
+            if self.snoozed_this_period:
+                snooze_count = self.snooze_count + 1
+            if snooze_count >= self.snooze_threshold:
+                interval = min(365, interval + 1)
+                snooze_count = 0
+                _LOGGER.debug(
+                    "%s: snooze threshold reached — interval increased to %d days",
+                    self.plant_name, interval,
+                )
 
         new_next = (today + timedelta(days=interval)).isoformat()
         await self._persist({
@@ -327,10 +329,12 @@ class PlantData:
         else:
             new_next_watering = (today + timedelta(days=1)).isoformat()
 
-        updates = {
-            STATE_NEXT_WATERING: new_next_watering,
-            STATE_SNOOZED_THIS_PERIOD: True,
-        }
+        updates = {STATE_NEXT_WATERING: new_next_watering}
+
+        # Only track snooze streak for schedule-driven plants — moisture sensor
+        # plants snooze silently without affecting the adaptive counter.
+        if not self.moisture_sensor:
+            updates[STATE_SNOOZED_THIS_PERIOD] = True
 
         # Also snooze fertilization if it is due today or overdue
         if self.enable_fertilization:
@@ -398,6 +402,33 @@ class PlantData:
 
     async def daily_rollover(self) -> None:
         today = date.today()
+
+        # For moisture sensor plants, check current soil moisture before
+        # flagging as due. If moisture is above the dry threshold the plant
+        # doesn't need watering yet — silently push the date by 1 day without
+        # touching the snooze counter or adaptive logic.
+        if self.moisture_sensor and self.dry_threshold is not None:
+            state = self._hass.states.get(self.moisture_sensor)
+            if state and state.state not in ("unknown", "unavailable"):
+                try:
+                    moisture = float(state.state)
+                    if moisture > self.dry_threshold:
+                        nw = self.next_watering
+                        if nw:
+                            try:
+                                new_next = (date.fromisoformat(nw) + timedelta(days=1)).isoformat()
+                            except ValueError:
+                                new_next = (today + timedelta(days=1)).isoformat()
+                        else:
+                            new_next = (today + timedelta(days=1)).isoformat()
+                        _LOGGER.debug(
+                            "%s: moisture above dry threshold at rollover — pushing next watering to %s",
+                            self.plant_name, new_next,
+                        )
+                        await self._persist({STATE_NEXT_WATERING: new_next})
+                except (ValueError, TypeError):
+                    pass
+
         health_updated_str = self.health_last_updated
         needs_notification = False
 
