@@ -40,6 +40,7 @@ A fully local, event-driven Home Assistant custom integration for tracking and m
 - Link any existing sensor entity
 - Automatically reschedule watering if soil is dry
 - Automatically mark as watered if soil is saturated
+- Adaptive watering logic is disabled for moisture sensor plants — the sensor drives watering decisions, the schedule acts as a fallback only
 
 ### 📝 Notes (optional)
 - Free-form text field stored per plant
@@ -137,7 +138,7 @@ This repo includes a companion Lovelace card (`adaptive-plant-card.js`) with a f
 3. Hard refresh your browser (Ctrl+Shift+R / Cmd+Shift+R)
 4. Add a new card and search for **Adaptive Plant Card**
 
-> **Tip:** If you update the card and don't see changes, append `?v=2` (or any number) to the resource URL in **Settings → Dashboards → Resources** to force a cache refresh.
+> **Tip:** If you update the card and don't see changes, make sure you've cleared your cache.
 
 ### Card Features
 
@@ -157,7 +158,7 @@ The card is fully configurable via the visual editor — no YAML required. The c
 
 **Default configuration (no options set):**
 
-![Adaptive Plant Card default](https://github.com/user-attachments/assets/03479b87-4574-423d-874c-464850223834)
+![Adaptive Plant Card default](https://github.com/user-attachments/assets/197cb184-1b00-4dc0-9916-2c4cfced9315)
 ```yaml
 type: custom:adaptive-plant-card
 ```
