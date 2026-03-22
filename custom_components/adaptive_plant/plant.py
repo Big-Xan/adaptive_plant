@@ -400,6 +400,55 @@ class PlantData:
 
     # ── Event-driven callbacks ───────────────────────────────────────────────────
 
+    async def startup_moisture_check(self) -> None:
+        """On HA startup, push next_watering forward if soil moisture is above
+        the dry threshold and the plant is already due or overdue.
+
+        Skips silently if:
+        - No moisture sensor configured
+        - No dry threshold configured
+        - Sensor state is unknown/unavailable (Bluetooth/Zigbee not yet reported)
+        - Plant is not yet due
+        """
+        if not self.moisture_sensor or self.dry_threshold is None:
+            return
+
+        nw = self.next_watering
+        if not nw:
+            return
+
+        try:
+            next_date = date.fromisoformat(nw)
+        except ValueError:
+            return
+
+        today = date.today()
+        if next_date > today:
+            # Not yet due — nothing to fix
+            return
+
+        state = self._hass.states.get(self.moisture_sensor)
+        if state is None or state.state in ("unknown", "unavailable"):
+            _LOGGER.debug(
+                "%s: startup moisture check skipped — sensor not yet available",
+                self.plant_name,
+            )
+            return
+
+        try:
+            moisture = float(state.state)
+        except (ValueError, TypeError):
+            return
+
+        if moisture > self.dry_threshold:
+            new_next = (today + timedelta(days=1)).isoformat()
+            _LOGGER.debug(
+                "%s: startup moisture check — soil above dry threshold, pushing next watering to %s",
+                self.plant_name,
+                new_next,
+            )
+            await self._persist({STATE_NEXT_WATERING: new_next})
+
     async def daily_rollover(self) -> None:
         today = date.today()
 
