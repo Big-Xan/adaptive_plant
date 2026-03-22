@@ -659,6 +659,14 @@ class AdaptivePlantCard extends HTMLElement {
 
 customElements.define('adaptive-plant-card', AdaptivePlantCard);
 
+window.customCards = window.customCards || [];
+window.customCards.push({
+  type: 'adaptive-plant-card',
+  name: 'Adaptive Plant',
+  description: 'Track and manage your plants with adaptive watering logic.',
+  preview: false,
+});
+
 
 // ── Visual Editor ─────────────────────────────────────────────────────────────
 
