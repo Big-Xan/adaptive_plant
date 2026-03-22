@@ -73,6 +73,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Forward to all entity platforms
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
+    # ── Startup moisture check ───────────────────────────────────────────────
+    # Deferred as a task so it doesn't block entry setup. For moisture sensor
+    # plants that were already overdue before 1.0.4 was installed, pushes
+    # next_watering forward by 1 day if soil is above the dry threshold.
+    # Skips gracefully if the sensor hasn't reported yet — nightly rollover
+    # at 00:05 will catch it.
+    async def _startup_moisture_check() -> None:
+        await plant.startup_moisture_check()
+
+    hass.async_create_task(_startup_moisture_check())
+
     # ── Assign device to area if one was selected ────────────────────────────
     area_id: str | None = entry.data.get(CONF_AREA)
     if area_id:
