@@ -617,7 +617,7 @@ class AdaptivePlantCard extends HTMLElement {
       '.area-group{margin-bottom:4px;}.day-group{margin-bottom:16px;}.area-subgroup{margin-bottom:2px;}',
       '.area-header{padding:12px 16px 4px;font-size:' + (this._areaHeaderSize ? this._areaHeaderSize + 'px' : '12px') + ';font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:' + (this._areaHeaderColor ? this._areaHeaderColor : 'var(--secondary-text-color,#888)') + ';}',
       '.day-header{padding:10px 16px 2px;font-size:16px;font-weight:700;}',
-      '.area-sub-header{padding:4px 16px 2px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--secondary-text-color,#555);}',
+      '.area-sub-header{padding:4px 16px 2px;font-size:' + (this._areaHeaderSize ? this._areaHeaderSize + 'px' : '11px') + ';font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:' + (this._areaHeaderColor ? this._areaHeaderColor : 'var(--secondary-text-color,#555)') + ';}',
       '.label-sub-header{' + this._labelSubHeaderCss() + '}',
       '.plant-row{display:flex;align-items:center;padding:10px 16px;gap:12px;}.plant-row-click{cursor:pointer;}',
       '@media (hover:hover){.plant-row-click:hover{background:rgba(255,255,255,0.04);}}',
