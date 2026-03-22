@@ -138,7 +138,7 @@ This repo includes a companion Lovelace card (`adaptive-plant-card.js`) with a f
 3. Hard refresh your browser (Ctrl+Shift+R / Cmd+Shift+R)
 4. Add a new card and search for **Adaptive Plant Card**
 
-> **Tip:** If you update the card and don't see changes, append `?v=2` (or any number) to the resource URL in **Settings → Dashboards → Resources** to force a cache refresh.
+> **Tip:** If you update the card and don't see changes, make sure you've cleared your cache.
 
 ### Card Features
 
