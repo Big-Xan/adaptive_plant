@@ -2,7 +2,7 @@
 
 A fully local, event-driven Home Assistant custom integration for tracking and managing your plants — with intelligent adaptive watering logic that learns your plants' needs over time. Includes a companion Lovelace card with a full visual editor and a task reminder blueprint for Companion App notifications.
 
-![Adaptive Plant Card](https://github.com/user-attachments/assets/1ec6be2a-0d48-43dd-a9f1-b806f7b70404)
+![Adaptive Plant Card](https://github.com/user-attachments/assets/e5a4543a-0075-4317-8cac-eb741025767f)
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 ![HA Version](https://img.shields.io/badge/HA-2024.6%2B-blue)
