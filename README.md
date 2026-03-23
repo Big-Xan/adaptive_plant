@@ -1,4 +1,4 @@
-# 🌱 Adaptive Plant
+# <img src="https://raw.githubusercontent.com/Big-Xan/adaptive_plant/main/custom_components/adaptive_plant/brand/icon.png" width="32" height="32" style="vertical-align:middle"> Adaptive Plant
 
 A fully local, event-driven Home Assistant custom integration for tracking and managing your plants — with intelligent adaptive watering logic that learns your plants' needs over time. Includes a companion Lovelace card with a full visual editor and a task reminder blueprint for Companion App notifications.
 
