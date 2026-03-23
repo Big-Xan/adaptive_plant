@@ -265,9 +265,12 @@ All options are... they're optional — omit any to use defaults.
 
 ## 📋 Task Reminder Blueprint
 
-A companion blueprint for daily plant task reminders is included in this repo. Sends a single combined notification when any of your plants have watering or fertilization tasks due or overdue — automatically discovering all plants without any manual configuration. Supports up to three daily reminder times, customizable notification text, an optional task count summary (e.g. "4 Waterings and 2 Fertilizations"), and a tap action to open your plant dashboard directly. Plants can be individually excluded from watering or fertilization reminders. Compatible with the Home Assistant Companion App (iOS and Android).
+A companion blueprint for daily plant task reminders is included in this repo. Sends a single combined notification when any of your plants have watering or fertilization tasks due or overdue — automatically discovering all plants without any manual configuration. Supports up to three daily reminder times, customizable notification text, an optional task count summary (e.g. "4 Waterings and 2 Fertilizations"), and a tap action to open your plant dashboard directly. Optionally restrict notifications to only fire when a person is in a specific zone. Plants can be individually excluded from watering or fertilization reminders. Compatible with the Home Assistant Companion App (iOS and Android).
 
 [![Import Blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://raw.githubusercontent.com/Big-Xan/adaptive_plant/main/blueprints/automation/adaptive_plant/plant_task_reminders.yaml)
+
+![Task Reminder Blueprint](https://github.com/user-attachments/assets/a1c65a41-0737-4fd7-a3aa-e71e9ae2b0d5)
+
 
 Or manually import via **Settings → Automations & Scenes → Blueprints → Import Blueprint** and paste:
 ```
