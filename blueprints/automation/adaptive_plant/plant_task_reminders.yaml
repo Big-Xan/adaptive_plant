@@ -101,6 +101,28 @@ blueprint:
       selector:
         boolean:
 
+    # ── Location ──────────────────────────────────────────────────────────────
+    notify_only_when_in_zone:
+      name: Only notify when person is in zone (optional)
+      description: >
+        If set, the notification will only fire if the selected person is
+        in the selected zone. Leave blank to always notify regardless of
+        location.
+      default: ""
+      selector:
+        entity:
+          domain: person
+
+    notify_zone:
+      name: Zone to check (optional)
+      description: >
+        The zone to check against. Only used if a person is selected above.
+        Defaults to zone.home if left blank.
+      default: "zone.home"
+      selector:
+        entity:
+          domain: zone
+
     # ── Exclusions ────────────────────────────────────────────────────────────
     excluded_watering_plants:
       name: Exclude plants from watering reminders (optional)
@@ -131,6 +153,8 @@ variables:
   show_task_detail: !input show_task_detail
   dashboard_url: !input dashboard_url
   enable_fertilization_reminders: !input enable_fertilization_reminders
+  notify_only_when_in_zone: !input notify_only_when_in_zone
+  notify_zone: !input notify_zone
   excluded_watering_plants: !input excluded_watering_plants
   excluded_fertilization_plants: !input excluded_fertilization_plants
   reminder_time_1: !input reminder_time_1
@@ -218,6 +242,14 @@ condition:
       {% endif %}
   - condition: template
     value_template: "{{ total_due_count | int > 0 }}"
+  - condition: template
+    value_template: >
+      {% if notify_only_when_in_zone == '' %}
+        true
+      {% else %}
+        {% set zone = notify_zone if notify_zone != '' else 'zone.home' %}
+        {{ is_state(notify_only_when_in_zone, state_attr(zone, 'friendly_name') | lower) }}
+      {% endif %}
 
 action:
   - choose:
