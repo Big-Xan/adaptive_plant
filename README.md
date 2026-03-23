@@ -269,13 +269,13 @@ A companion blueprint for daily plant task reminders is included in this repo. S
 
 [![Import Blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://raw.githubusercontent.com/Big-Xan/adaptive_plant/main/blueprints/automation/adaptive_plant/plant_task_reminders.yaml)
 
-![Task Reminder Blueprint](https://github.com/user-attachments/assets/a1c65a41-0737-4fd7-a3aa-e71e9ae2b0d5)
-
-
 Or manually import via **Settings → Automations & Scenes → Blueprints → Import Blueprint** and paste:
 ```
 https://raw.githubusercontent.com/Big-Xan/adaptive_plant/main/blueprints/automation/adaptive_plant/plant_task_reminders.yaml
 ```
+
+![Task Reminder Blueprint](https://github.com/user-attachments/assets/a1c65a41-0737-4fd7-a3aa-e71e9ae2b0d5)
+
 
 ## Privacy & Security
 
