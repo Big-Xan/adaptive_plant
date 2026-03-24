@@ -109,11 +109,21 @@
           "health_prompt_interval_days": "Health prompt interval (days)",
           "fertilization_interval_days": "Fertilization interval (days)",
           "image_path": "Image path (/local/...)",
-          "dry_threshold": "Dry threshold",
-          "wet_threshold": "Wet threshold"
+          "moisture_sensor_enabled": "Enable moisture sensor",
+          "moisture_sensor": "Moisture sensor"
         },
         "data_description": {
-          "label": "Optional sublabel to group plants within an area (e.g. Left shelf, Window sill). Leave blank to remove."
+          "label": "Optional sublabel to group plants within an area (e.g. Left shelf, Window sill). Leave blank to remove.",
+          "moisture_sensor_enabled": "Toggle off to remove the moisture sensor and clear all thresholds.",
+          "moisture_sensor": "Select a sensor to drive automatic watering logic."
+        }
+      },
+      "moisture_options": {
+        "title": "Moisture Thresholds",
+        "description": "Set the thresholds for dry and wet moisture readings.",
+        "data": {
+          "dry_threshold": "Dry threshold (reschedule watering to today)",
+          "wet_threshold": "Wet threshold (auto-mark as watered)"
         }
       }
     },
@@ -130,7 +140,8 @@
       "snooze_count": { "name": "Consecutive periods snoozed" },
       "last_fertilized": { "name": "Last fertilized" },
       "next_fertilized": { "name": "Next fertilization" },
-      "days_until_fertilizing": { "name": "Days until fertilization" }
+      "days_until_fertilizing": { "name": "Days until fertilization" },
+      "current_moisture": { "name": "Soil moisture" }
     },
     "button": {
       "mark_watered": { "name": "Mark watered" },
