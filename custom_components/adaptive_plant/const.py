@@ -32,8 +32,8 @@ STATE_NEXT_FERTILIZED = "next_fertilized"
 STATE_NOTES = "notes"
 
 # ── Health select options ──────────────────────────────────────────────────────
-HEALTH_OPTIONS = ["Excellent", "Good", "Poor", "Sick"]
-DEFAULT_HEALTH = "Good"
+HEALTH_OPTIONS = ["excellent", "good", "poor", "sick"]
+DEFAULT_HEALTH = "good"
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
 DEFAULT_WATERING_INTERVAL = 7
