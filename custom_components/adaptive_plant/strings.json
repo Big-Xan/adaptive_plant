@@ -157,10 +157,10 @@
       "health": {
         "name": "Health",
         "state": {
-          "Excellent": "Excellent",
-          "Good": "Good",
-          "Poor": "Poor",
-          "Sick": "Sick"
+          "excellent": "Excellent",
+          "good": "Good",
+          "poor": "Poor",
+          "sick": "Sick"
         }
       }
     },
