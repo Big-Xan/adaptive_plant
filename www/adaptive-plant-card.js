@@ -246,7 +246,8 @@ class AdaptivePlantCard extends HTMLElement {
       var st   = function(s) { var fid = find(s); return fid ? hass.states[fid] : null; };
       var nwSt   = st('_next_watering');
       var nwAt   = nwSt && nwSt.attributes ? nwSt.attributes : {};
-      var hlthSt = st('_health');
+      var hlthId = devIds.find(function(id) { return id.startsWith('select.') && id.endsWith('_health'); });
+      var hlthSt = hlthId ? hass.states[hlthId] : null;
       var hlthAt = hlthSt && hlthSt.attributes ? hlthSt.attributes : {};
       return {
         id:                   devId,
@@ -259,7 +260,7 @@ class AdaptivePlantCard extends HTMLElement {
         nextFertilized:       st('_next_fertilization')       ? st('_next_fertilization').state       : null,
         daysFert:             st('_days_until_fertilization') ? st('_days_until_fertilization').state : null,
         health:               hlthSt ? hlthSt.state : null,
-        healthEntityId:       find('_health'),
+        healthEntityId:       hlthId || null,
         healthCheckInOverdue: hlthAt.health_check_in_overdue === true,
         notes:                (st('_notes') && st('_notes').state) ? st('_notes').state : '',
         notesEntityId:        find('_notes'),
