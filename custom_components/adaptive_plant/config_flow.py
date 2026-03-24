@@ -308,6 +308,8 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
 
     def __init__(self, config_entry: ConfigEntry) -> None:
         self._config_entry = config_entry
+        # Stash the moisture sensor choice from step 1 so step 2 knows what was picked
+        self._pending_moisture_sensor: str | None = None
 
     async def async_step_init(self, user_input: dict | None = None) -> FlowResult:
         errors: dict[str, str] = {}
@@ -315,27 +317,50 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
         current_opts = entry.options
 
         if user_input is not None:
-            dry = user_input.get(CONF_DRY_THRESHOLD)
-            wet = user_input.get(CONF_WET_THRESHOLD)
-            if dry is not None and wet is not None and dry >= wet:
-                errors["base"] = "dry_above_wet"
+            cleaned = {k: v for k, v in user_input.items() if v not in (None, "")}
+
+            # Normalise label
+            if CONF_LABEL in cleaned:
+                lv = cleaned[CONF_LABEL].strip()
+                if not lv or lv.lower() == "null":
+                    del cleaned[CONF_LABEL]
+                else:
+                    cleaned[CONF_LABEL] = lv
+
+            # Handle moisture sensor selection.
+            # The toggle is the authoritative clear mechanism — if it's off we
+            # strip the sensor and thresholds regardless of the picker value,
+            # since the HA entity selector can't be truly blanked in the UI.
+            moisture_enabled = user_input.get("moisture_sensor_enabled", False)
+            moisture_raw = user_input.get(CONF_MOISTURE_SENSOR) if moisture_enabled else None
+            # Remove the toggle key — it's UI-only, not stored in options
+            cleaned.pop("moisture_sensor_enabled", None)
+
+            if moisture_raw:
+                self._pending_moisture_sensor = moisture_raw
+                # Carry non-moisture fields forward so they're saved after thresholds
+                self._pending_opts = cleaned
+                return await self.async_step_moisture_options()
             else:
-                cleaned = {k: v for k, v in user_input.items() if v not in (None, "")}
-                # Normalise label: strip whitespace, treat literal "null" as clearing it
-                if CONF_LABEL in cleaned:
-                    lv = cleaned[CONF_LABEL].strip()
-                    if not lv or lv.lower() == 'null':
-                        del cleaned[CONF_LABEL]
-                    else:
-                        cleaned[CONF_LABEL] = lv
+                # Sensor cleared — strip moisture-related keys from options
                 merged = {**current_opts, **cleaned}
-                # Explicitly remove keys the user blanked out (e.g. clearing a label)
+                for key in (CONF_MOISTURE_SENSOR, CONF_DRY_THRESHOLD, CONF_WET_THRESHOLD):
+                    merged.pop(key, None)
+                # Also clear blanked fields
                 for k, v in user_input.items():
                     if v in (None, "") and k in merged:
                         del merged[k]
                 return self.async_create_entry(title="", data=merged)
 
         defaults = {**entry.data, **current_opts}
+
+        # Resolve the currently active moisture sensor (options take priority)
+        current_moisture = (
+            current_opts.get(CONF_MOISTURE_SENSOR)
+            or entry.data.get(CONF_MOISTURE_SENSOR)
+            or None
+        )
+
         schema_fields: dict = {
             vol.Optional(CONF_LABEL, default=defaults.get(CONF_LABEL, "")): selector.selector(
                 {"text": {}}
@@ -364,12 +389,52 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
                 {"text": {}}
             )
 
-        if entry.data.get(CONF_MOISTURE_SENSOR):
-            schema_fields[vol.Required(CONF_DRY_THRESHOLD, default=defaults.get(CONF_DRY_THRESHOLD, 30.0))] = selector.selector(
-                {"number": {"min": 0, "max": 100, "step": 0.1, "mode": "box"}}
-            )
-            schema_fields[vol.Required(CONF_WET_THRESHOLD, default=defaults.get(CONF_WET_THRESHOLD, 70.0))] = selector.selector(
-                {"number": {"min": 0, "max": 100, "step": 0.1, "mode": "box"}}
-            )
+        # Always show moisture sensor picker so users can add, change, or clear it.
+        # A boolean toggle acts as the clear mechanism since the entity selector
+        # widget cannot be truly blanked in the HA UI (clicking X still submits
+        # the previous value). Toggle off = clear sensor + thresholds.
+        has_moisture = bool(current_moisture)
+        schema_fields[vol.Required("moisture_sensor_enabled", default=has_moisture)] = selector.selector(
+            {"boolean": {}}
+        )
+        if current_moisture:
+            sensor_field = vol.Optional(CONF_MOISTURE_SENSOR, default=current_moisture)
+        else:
+            sensor_field = vol.Optional(CONF_MOISTURE_SENSOR)
+        schema_fields[sensor_field] = selector.selector(
+            {"entity": {"domain": "sensor", "multiple": False}}
+        )
 
-        return self.async_show_form(step_id="init", data_schema=vol.Schema(schema_fields), errors=errors)
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(schema_fields),
+            errors=errors,
+        )
+
+    async def async_step_moisture_options(self, user_input: dict | None = None) -> FlowResult:
+        """Second step shown only when a moisture sensor has been selected."""
+        errors: dict[str, str] = {}
+        entry = self._config_entry
+        current_opts = entry.options
+        defaults = {**entry.data, **current_opts}
+
+        if user_input is not None:
+            dry = user_input.get(CONF_DRY_THRESHOLD)
+            wet = user_input.get(CONF_WET_THRESHOLD)
+            if dry is not None and wet is not None and dry >= wet:
+                errors["base"] = "dry_above_wet"
+            else:
+                merged = {
+                    **current_opts,
+                    **self._pending_opts,
+                    CONF_MOISTURE_SENSOR: self._pending_moisture_sensor,
+                    CONF_DRY_THRESHOLD: dry,
+                    CONF_WET_THRESHOLD: wet,
+                }
+                return self.async_create_entry(title="", data=merged)
+
+        return self.async_show_form(
+            step_id="moisture_options",
+            data_schema=_moisture_schema(defaults),
+            errors=errors,
+        )
