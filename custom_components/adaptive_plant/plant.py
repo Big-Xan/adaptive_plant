@@ -108,16 +108,23 @@ class PlantData:
 
     @property
     def moisture_sensor(self) -> str | None:
-        return self._entry.data.get(CONF_MOISTURE_SENSOR)
+        # Prefer options (updated via options flow) over original entry data.
+        # An explicit empty string in options means the user cleared it.
+        val = self._entry.options.get(CONF_MOISTURE_SENSOR)
+        if val is not None:
+            return val or None  # treat "" as None (cleared)
+        return self._entry.data.get(CONF_MOISTURE_SENSOR) or None
 
     @property
     def dry_threshold(self) -> float | None:
-        val = self._entry.data.get(CONF_DRY_THRESHOLD)
+        # Prefer options over data so the options flow can update this.
+        val = self._entry.options.get(CONF_DRY_THRESHOLD, self._entry.data.get(CONF_DRY_THRESHOLD))
         return float(val) if val is not None else None
 
     @property
     def wet_threshold(self) -> float | None:
-        val = self._entry.data.get(CONF_WET_THRESHOLD)
+        # Prefer options over data so the options flow can update this.
+        val = self._entry.options.get(CONF_WET_THRESHOLD, self._entry.data.get(CONF_WET_THRESHOLD))
         return float(val) if val is not None else None
 
     # ── Mutable config ───────────────────────────────────────────────────────────
@@ -371,10 +378,18 @@ class PlantData:
         self._notify_listeners()
 
     async def confirm_health(self) -> None:
-        """Reset the health check-in clock without changing the health value."""
+        """Reset the health check-in clock without changing the health value.
+
+        Also explicitly writes the current resolved health value to options so
+        the HealthSelect entity state is always driven from a real health string
+        rather than falling back through the options dict — which could otherwise
+        cause the select entity to display a date string if STATE_HEALTH was
+        never explicitly persisted (e.g. plants created before health was set).
+        """
         current = self._entry.options
         merged = {
             **current,
+            STATE_HEALTH: self.health,
             STATE_HEALTH_LAST_UPDATED: date.today().isoformat(),
         }
         self._hass.config_entries.async_update_entry(self._entry, options=merged)
