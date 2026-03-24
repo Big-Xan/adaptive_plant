@@ -115,7 +115,7 @@ Each plant creates a device with the following entities:
 | Fertilization interval | Number | *(if fertilization enabled)* |
 | Mark fertilized | Button | *(if fertilization enabled)* |
 | Notes | Text | *(if notes enabled)* |
-| Soil moisture | Sensor | Diagnostic — live reading from linked moisture sensor (if moisture sensor configured) |
+| Soil moisture | Sensor | Diagnostic — live reading from linked moisture sensor *(if moisture sensor configured)* |
 ---
 
 ## Adaptive Logic
