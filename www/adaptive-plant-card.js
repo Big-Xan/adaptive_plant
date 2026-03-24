@@ -1,4 +1,4 @@
-// Adaptive Plant Card v10
+// Adaptive Plant Card v11
 
 class AdaptivePlantCard extends HTMLElement {
   constructor() {
