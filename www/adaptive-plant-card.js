@@ -64,10 +64,10 @@ class AdaptivePlantCard extends HTMLElement {
       text_overview: h.text_overview !== undefined ? h.text_overview : null,
       ring_width:    h.ring_width || 3,
       colors: {
-        Excellent: hc.Excellent || '#7cb97e',
-        Good:      hc.Good      || '#a8cc8a',
-        Poor:      hc.Poor      || '#e6a817',
-        Sick:      hc.Sick      || '#e05c5c',
+        excellent: hc.excellent || '#7cb97e',
+        good:      hc.good      || '#a8cc8a',
+        poor:      hc.poor      || '#e6a817',
+        sick:      hc.sick      || '#e05c5c',
       },
     };
 
@@ -462,7 +462,7 @@ class AdaptivePlantCard extends HTMLElement {
     var self = this;
     if (!plants.length) return '<div class="empty"><span class="empty-icon">🌱</span><p>No plants added yet.</p></div>';
 
-    var healthRank = { Excellent: 0, Good: 1, Poor: 2, Sick: 3 };
+    var healthRank = { excellent: 0, good: 1, poor: 2, sick: 3 };
     var sorted = plants.slice().sort(function(a, b) {
       if (self._overviewSort === 'health') {
         var ra = healthRank[a.health] !== undefined ? healthRank[a.health] : 2;
@@ -488,7 +488,7 @@ class AdaptivePlantCard extends HTMLElement {
           var isExp   = self._expanded === p.id;
           var urgent  = self._isUrgent(p.daysWater) || self._isUrgent(p.daysFert);
           var showTxt = self._showText('overview');
-          var hopts   = ['Excellent','Good','Poor','Sick'];
+          var hopts   = ['excellent','good','poor','sick'];
           var row = '<div class="plant-row plant-row-click" data-expand="' + p.id + '">' +
             self._avatar(p, 'overview') +
             '<div class="plant-info">' +
@@ -820,10 +820,10 @@ class AdaptivePlantCardEditor extends HTMLElement {
       '<div class="field-group"><div class="field-label">Health level colors</div>' +
         '<div class="field-hint">Click the color square, type a hex code (e.g. <strong>#e05c5c</strong>), or enter any CSS color name.</div>' +
         '<div class="color-grid">' +
-          this._colorField('Excellent', 'health.colors.Excellent', this._get('health.colors.Excellent', '#7cb97e')) +
-          this._colorField('Good',      'health.colors.Good',      this._get('health.colors.Good',      '#a8cc8a')) +
-          this._colorField('Poor',      'health.colors.Poor',      this._get('health.colors.Poor',      '#e6a817')) +
-          this._colorField('Sick',      'health.colors.Sick',      this._get('health.colors.Sick',      '#e05c5c')) +
+          this._colorField('Excellent', 'health.colors.excellent', this._get('health.colors.excellent', '#7cb97e')) +
+          this._colorField('Good',      'health.colors.good',      this._get('health.colors.good',      '#a8cc8a')) +
+          this._colorField('Poor',      'health.colors.poor',      this._get('health.colors.poor',      '#e6a817')) +
+          this._colorField('Sick',      'health.colors.sick',      this._get('health.colors.sick',      '#e05c5c')) +
         '</div>' +
       '</div>';
   }
