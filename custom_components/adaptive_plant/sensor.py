@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo, EntityCategory
@@ -26,6 +26,7 @@ async def async_setup_entry(
         DaysUntilWateringSensor(plant, entry),
         EarlyWateringCountSensor(plant, entry),
         SnoozeCountSensor(plant, entry),
+        CurrentMoistureSensor(plant, entry),
     ]
 
     if plant.enable_fertilization:
@@ -239,3 +240,49 @@ class DaysUntilFertilizingSensor(PlantSensorBase):
         if days == 1:
             return "In 1 Day"
         return f"In {days} Days"
+
+
+class CurrentMoistureSensor(PlantSensorBase):
+    """Diagnostic sensor that mirrors the linked moisture sensor's current reading.
+
+    Always created so it appears on the device page in the HA integration panel.
+    Disabled by default when no moisture sensor is configured; automatically
+    enabled once a sensor is assigned (requires entry reload after options save).
+    """
+
+    _attr_translation_key = "current_moisture"
+    _attr_icon = "mdi:water-percent"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_device_class = SensorDeviceClass.MOISTURE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = "%"
+
+    def __init__(self, plant: PlantData, entry: ConfigEntry) -> None:
+        super().__init__(plant, entry)
+        self._attr_unique_id = f"{entry.entry_id}_current_moisture"
+        # Always enabled — availability is controlled dynamically via the
+        # `available` property below. When no sensor is configured the entity
+        # shows as unavailable rather than requiring manual enable/disable.
+        self._attr_entity_registry_enabled_default = True
+
+    @property
+    def native_value(self) -> float | None:
+        sensor_id = self._plant.moisture_sensor
+        if not sensor_id:
+            return None
+        state = self._plant._hass.states.get(sensor_id)
+        if state is None or state.state in ("unknown", "unavailable"):
+            return None
+        try:
+            return float(state.state)
+        except (ValueError, TypeError):
+            return None
+
+    @property
+    def available(self) -> bool:
+        """Unavailable when no sensor is configured or the sensor is unavailable."""
+        sensor_id = self._plant.moisture_sensor
+        if not sensor_id:
+            return False
+        state = self._plant._hass.states.get(sensor_id)
+        return state is not None and state.state not in ("unknown", "unavailable")
