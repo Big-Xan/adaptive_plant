@@ -43,6 +43,9 @@ A fully local, event-driven Home Assistant custom integration for tracking and m
 - Automatically reschedule watering if soil is dry
 - Automatically mark as watered if soil is saturated
 - Adaptive watering logic is disabled for moisture sensor plants — the sensor drives watering decisions, the schedule acts as a fallback only
+- Moisture sensor, dry threshold, and wet threshold can all be added, changed, or removed after setup via Configure. Use the Enable moisture sensor toggle to remove a sensor — toggling off clears the sensor and both thresholds.
+
+> **Tip:** To remove a moisture sensor after setup, open Configure, toggle Enable moisture sensor off, and save.
 
 ### 📝 Notes (optional)
 - Free-form text field stored per plant
@@ -112,7 +115,7 @@ Each plant creates a device with the following entities:
 | Fertilization interval | Number | *(if fertilization enabled)* |
 | Mark fertilized | Button | *(if fertilization enabled)* |
 | Notes | Text | *(if notes enabled)* |
-
+| Soil moisture | Sensor | Diagnostic — live reading from linked moisture sensor (if moisture sensor configured) |
 ---
 
 ## Adaptive Logic
