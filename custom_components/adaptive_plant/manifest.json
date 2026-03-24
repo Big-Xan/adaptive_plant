@@ -1,13 +1,11 @@
 {
-    "domain": "adaptive_plant",
-    "name": "Adaptive Plant",
-    "version": "1.0.7",
-    "config_flow": true,
-    "documentation": "https://github.com/Big-Xan/adaptive_plant",
-    "issue_tracker": "https://github.com/Big-Xan/adaptive_plant/issues",
-    "requirements": [],
-    "dependencies": [],
-    "codeowners": ["@Big-Xan"],
-    "iot_class": "local_push",
-    "quality_scale": "custom"
+  "domain": "adaptive_plant",
+  "name": "Adaptive Plant",
+  "codeowners": ["@Big-Xan"],
+  "config_flow": true,
+  "documentation": "https://github.com/Big-Xan/adaptive_plant",
+  "iot_class": "local_push",
+  "quality_scale": "custom",
+  "requirements": [],
+  "version": "1.0.7"
 }
