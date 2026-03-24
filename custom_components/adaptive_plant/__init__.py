@@ -15,9 +15,12 @@ from homeassistant.helpers.event import (
 from .const import (
     CONF_AREA,
     CONF_MOISTURE_SENSOR,
+    DEFAULT_HEALTH,
     DOMAIN,
+    HEALTH_OPTIONS,
     OPT_WATERING_INTERVAL,
     PLATFORMS,
+    STATE_HEALTH,
     STATE_HEALTH_LAST_UPDATED,
     STATE_LAST_FERTILIZED,
     STATE_LAST_WATERED,
@@ -64,6 +67,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         initial_options[STATE_HEALTH_LAST_UPDATED] = date.today().isoformat()
         seeded = True
 
+    # Seed STATE_HEALTH so the HealthSelect entity always reads a real health
+    # string from options. Also corrects any existing entry where a non-health
+    # value (e.g. a timestamp) was previously stored under this key.
+    current_health = initial_options.get(STATE_HEALTH)
+    if current_health not in HEALTH_OPTIONS:
+        initial_options[STATE_HEALTH] = DEFAULT_HEALTH
+        seeded = True
+
     if seeded:
         hass.config_entries.async_update_entry(entry, options=initial_options)
 
@@ -103,19 +114,46 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
 
     # ── Moisture sensor listener ─────────────────────────────────────────────
-    moisture_sensor: str | None = entry.data.get(CONF_MOISTURE_SENSOR)
-    if moisture_sensor:
+    # Wrapped in a helper so it can be re-called when options change (e.g. the
+    # user adds, changes, or removes a moisture sensor via the options flow).
+    _moisture_unsub = None
+
+    def _register_moisture_listener() -> None:
+        nonlocal _moisture_unsub
+        # Tear down the previous listener if one exists
+        if _moisture_unsub is not None:
+            _moisture_unsub()
+            _moisture_unsub = None
+
+        sensor_id: str | None = plant.moisture_sensor
+        if not sensor_id:
+            return
 
         async def _moisture_state_changed(event: Event) -> None:
             new_state = event.data.get("new_state")
             if new_state is not None and new_state.state not in ("unknown", "unavailable"):
                 await plant.handle_moisture_change(new_state.state)
 
-        entry.async_on_unload(
-            async_track_state_change_event(
-                hass, [moisture_sensor], _moisture_state_changed
-            )
+        _moisture_unsub = async_track_state_change_event(
+            hass, [sensor_id], _moisture_state_changed
         )
+
+    _register_moisture_listener()
+
+    # ── Options update listener ──────────────────────────────────────────────
+    # Re-registers the moisture listener whenever the user saves new options,
+    # so adding/changing/removing a sensor takes effect without a full restart.
+    async def _handle_options_update(hass: HomeAssistant, entry: ConfigEntry) -> None:
+        _register_moisture_listener()
+
+    entry.async_on_unload(entry.add_update_listener(_handle_options_update))
+
+    # Ensure the moisture unsub is cleaned up on unload
+    def _unsub_moisture() -> None:
+        if _moisture_unsub is not None:
+            _moisture_unsub()
+
+    entry.async_on_unload(_unsub_moisture)
 
     return True
 
