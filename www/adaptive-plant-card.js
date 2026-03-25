@@ -1,4 +1,4 @@
-// Adaptive Plant Card v11
+// Adaptive Plant Card v12
 
 class AdaptivePlantCard extends HTMLElement {
   constructor() {
@@ -94,6 +94,10 @@ class AdaptivePlantCard extends HTMLElement {
     return this._health.text;
   }
   _healthColor(h) { return this._health.colors[h] || '#888'; }
+  _capitalise(str) {
+    if (!str) return '';
+    return str.charAt(0).toUpperCase() + str.slice(1);
+  }
 
   _avatar(plant, tab) {
     var showRing  = tab && plant.health && this._showRing(tab);
@@ -371,7 +375,7 @@ class AdaptivePlantCard extends HTMLElement {
             self._avatar(p, 'today') +
             '<div class="plant-info">' +
               '<div class="plant-name">' + p.name + '</div>' +
-              (self._showText('today') && p.health ? '<div class="plant-meta"><span class="health-badge" style="color:' + self._healthColor(p.health) + '">' + p.health + '</span></div>' : '') +
+              (self._showText('today') && p.health ? '<div class="plant-meta"><span class="health-badge" style="color:' + self._healthColor(p.health) + '">' + self._capitalise(p.health) + '</span></div>' : '') +
               '<div class="chips">' + (wu ? self._waterChip(p.daysWater) : '') + (fu ? self._fertChip(p.daysFert) : '') + '</div>' +
             '</div>' +
             '<div class="row-actions">' +
@@ -437,7 +441,7 @@ class AdaptivePlantCard extends HTMLElement {
               self._avatar(p, 'upcoming') +
               '<div class="plant-info">' +
                 '<div class="plant-name">' + p.name + '</div>' +
-                (self._showText('upcoming') && p.health ? '<div class="plant-meta"><span class="health-badge" style="color:' + self._healthColor(p.health) + '">' + p.health + '</span></div>' : '') +
+                (self._showText('upcoming') && p.health ? '<div class="plant-meta"><span class="health-badge" style="color:' + self._healthColor(p.health) + '">' + self._capitalise(p.health) + '</span></div>' : '') +
                 '<div class="chips">' +
                   (pg.water ? '<span class="chip chip-water">' + self._renderIcon(self._icons.water,     self._icons.water_color,     '13px') + ' ' + pg.water.lbl + '</span>' : '') +
                   (pg.fert  ? '<span class="chip chip-fert">'  + self._renderIcon(self._icons.fertilize, self._icons.fertilize_color, '13px') + ' ' + pg.fert.lbl  + '</span>' : '') +
@@ -494,7 +498,7 @@ class AdaptivePlantCard extends HTMLElement {
             '<div class="plant-info">' +
               '<div class="plant-name">' + p.name + (urgent ? '<span class="urgent-dot"></span>' : '') + '</div>' +
               '<div class="plant-meta">' +
-                (showTxt && p.health ? '<span class="health-badge" style="color:' + self._healthColor(p.health) + '">' + p.health + '</span>' : '') +
+                (showTxt && p.health ? '<span class="health-badge" style="color:' + self._healthColor(p.health) + '">' + self._capitalise(p.health) + '</span>' : '') +
                 (p.daysWater ? '<span class="meta-item">' + self._renderIcon(self._icons.water,     self._icons.water_color,     '12px') + ' ' + p.daysWater + '</span>' : '') +
                 (p.daysFert  ? '<span class="meta-item">' + self._renderIcon(self._icons.fertilize, self._icons.fertilize_color, '12px') + ' ' + p.daysFert  + '</span>' : '') +
               '</div>' +
@@ -522,7 +526,7 @@ class AdaptivePlantCard extends HTMLElement {
             (p.nextFertilized ? '<div class="detail-row"><span class="detail-label">Next fertilization</span><span class="detail-value">' + p.nextFertilized + '</span></div>' : '') +
             (p.healthEntityId ? '<div class="detail-row"><span class="detail-label">Health</span>' +
               '<select class="health-select" data-health-entity="' + p.healthEntityId + '">' +
-                hopts.map(function(o) { return '<option value="' + o + '"' + (o === p.health ? ' selected' : '') + '>' + o + '</option>'; }).join('') +
+                hopts.map(function(o) { return '<option value="' + o + '"' + (o === p.health ? ' selected' : '') + '>' + self._capitalise(o) + '</option>'; }).join('') +
               '</select></div>' : '') +
             notesHtml +
             '<div class="detail-actions">' +
