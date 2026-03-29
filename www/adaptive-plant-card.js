@@ -1,4 +1,4 @@
-// Adaptive Plant Card v12
+// Adaptive Plant Card v13
 
 class AdaptivePlantCard extends HTMLElement {
   constructor() {
@@ -33,6 +33,10 @@ class AdaptivePlantCard extends HTMLElement {
     this._areaHeaderSize  = config.area_header_size  || null;
     this._areaHeaderColor = config.area_header_color || null;
     this._labelHeaderSize = config.label_header_size || null;
+
+    // v13 options
+    this._excludeMoistureFromUpcoming = config.exclude_moisture_from_upcoming === true;
+    this._showMoistureInOverview      = config.show_moisture_in_overview      === true;
 
     var ic = config.icons || {};
     this._icons = {
@@ -253,6 +257,15 @@ class AdaptivePlantCard extends HTMLElement {
       var hlthId = devIds.find(function(id) { return id.startsWith('select.') && id.endsWith('_health'); });
       var hlthSt = hlthId ? hass.states[hlthId] : null;
       var hlthAt = hlthSt && hlthSt.attributes ? hlthSt.attributes : {};
+
+      // Moisture sensor value — null if not configured or unavailable
+      var moistureSt  = st('_soil_moisture');
+      var moistureVal = null;
+      if (moistureSt && moistureSt.state && moistureSt.state !== 'unavailable' && moistureSt.state !== 'unknown') {
+        var parsed = parseFloat(moistureSt.state);
+        if (!isNaN(parsed)) moistureVal = parsed;
+      }
+
       return {
         id:                   devId,
         name:                 dev.name_by_user || dev.name || 'Plant',
@@ -272,6 +285,8 @@ class AdaptivePlantCard extends HTMLElement {
         btnSnooze:            find('_snooze_today_s_tasks'),
         btnFert:              find('_mark_fertilized'),
         btnConfirmHealth:     find('_confirm_health'),
+        moistureVal:          moistureVal,   // float or null
+        hasMoisture:          moistureVal !== null,
       };
     }).sort(function(a, b) { return a.name.localeCompare(b.name); });
   }
@@ -348,6 +363,16 @@ class AdaptivePlantCard extends HTMLElement {
     '</button>';
   }
 
+  // ── Moisture pill for overview meta row ──────────────────────────────────────
+  _moisturePill(p) {
+    var pct   = Math.round(p.moistureVal);
+    var color = '#64b4ff';
+    return '<span class="meta-item moisture-pill">' +
+      this._renderIcon(this._icons.water, color, '12px') +
+      ' <span style="color:' + color + ';font-weight:600;">' + pct + '%</span>' +
+    '</span>';
+  }
+
   _renderToday(plants) {
     var self     = this;
     var waterDue = plants.filter(function(p) { return self._isUrgent(p.daysWater); });
@@ -406,8 +431,14 @@ class AdaptivePlantCard extends HTMLElement {
   _renderUpcoming(plants) {
     var self   = this;
     var cutoff = this._upcomingDays;
+
+    // v13: optionally exclude plants that have a live moisture sensor reading
+    var eligiblePlants = this._excludeMoistureFromUpcoming
+      ? plants.filter(function(p) { return !p.hasMoisture; })
+      : plants;
+
     var tasks  = [];
-    plants.forEach(function(p) {
+    eligiblePlants.forEach(function(p) {
       var wd = self._daysNum(p.daysWater);
       var fd = self._daysNum(p.daysFert);
       if (wd > 0 && wd <= cutoff) tasks.push({ plant: p, days: wd, type: 'water', lbl: p.daysWater });
@@ -492,6 +523,19 @@ class AdaptivePlantCard extends HTMLElement {
           var isExp   = self._expanded === p.id;
           var urgent  = self._isUrgent(p.daysWater) || self._isUrgent(p.daysFert);
           var showTxt = self._showText('overview');
+
+          // v13: in the meta row, show moisture % instead of watering days
+          // when the plant has an active moisture reading and the option is on.
+          // Falls back to days string if moisture is unavailable.
+          var waterMeta;
+          if (self._showMoistureInOverview && p.hasMoisture) {
+            waterMeta = self._moisturePill(p);
+          } else if (p.daysWater) {
+            waterMeta = '<span class="meta-item">' + self._renderIcon(self._icons.water, self._icons.water_color, '12px') + ' ' + p.daysWater + '</span>';
+          } else {
+            waterMeta = '';
+          }
+
           var hopts   = ['excellent','good','poor','sick'];
           var row = '<div class="plant-row plant-row-click" data-expand="' + p.id + '">' +
             self._avatar(p, 'overview') +
@@ -499,7 +543,7 @@ class AdaptivePlantCard extends HTMLElement {
               '<div class="plant-name">' + p.name + (urgent ? '<span class="urgent-dot"></span>' : '') + '</div>' +
               '<div class="plant-meta">' +
                 (showTxt && p.health ? '<span class="health-badge" style="color:' + self._healthColor(p.health) + '">' + self._capitalise(p.health) + '</span>' : '') +
-                (p.daysWater ? '<span class="meta-item">' + self._renderIcon(self._icons.water,     self._icons.water_color,     '12px') + ' ' + p.daysWater + '</span>' : '') +
+                waterMeta +
                 (p.daysFert  ? '<span class="meta-item">' + self._renderIcon(self._icons.fertilize, self._icons.fertilize_color, '12px') + ' ' + p.daysFert  + '</span>' : '') +
               '</div>' +
             '</div>' +
@@ -523,6 +567,7 @@ class AdaptivePlantCard extends HTMLElement {
           }
           var detail = '<div class="plant-detail">' +
             (p.nextWatering   ? '<div class="detail-row"><span class="detail-label">Next watering</span><span class="detail-value">' + p.nextWatering + '</span></div>' : '') +
+            (p.hasMoisture    ? '<div class="detail-row"><span class="detail-label">Soil moisture</span><span class="detail-value" style="color:#64b4ff;font-weight:600;">' + Math.round(p.moistureVal) + '%</span></div>' : '') +
             (p.nextFertilized ? '<div class="detail-row"><span class="detail-label">Next fertilization</span><span class="detail-value">' + p.nextFertilized + '</span></div>' : '') +
             (p.healthEntityId ? '<div class="detail-row"><span class="detail-label">Health</span>' +
               '<select class="health-select" data-health-entity="' + p.healthEntityId + '">' +
@@ -631,6 +676,7 @@ class AdaptivePlantCard extends HTMLElement {
       '.plant-info{flex:1;min-width:0;}.plant-name{font-size:15px;font-weight:500;display:flex;align-items:center;gap:6px;}',
       '.plant-meta{display:flex;gap:8px;margin-top:3px;flex-wrap:wrap;align-items:center;}',
       '.meta-item{font-size:12px;color:var(--secondary-text-color,#888);display:flex;align-items:center;gap:3px;}.health-badge{font-size:12px;font-weight:600;}',
+      '.moisture-pill{color:#64b4ff;}',
       '.urgent-dot{width:7px;height:7px;border-radius:50%;background:' + oc + ';display:inline-block;flex-shrink:0;}',
       '.chevron{font-size:10px;color:var(--secondary-text-color,#666);flex-shrink:0;}',
       '.chips{display:flex;gap:5px;margin-top:4px;flex-wrap:wrap;min-width:0;}',
@@ -751,6 +797,12 @@ class AdaptivePlantCardEditor extends HTMLElement {
         this._toggle('Show card background',      'show_background',  this._get('show_background',  true))  +
         this._toggle('Pin hold button to bottom', 'pin_hold_button',  this._get('pin_hold_button',  false)) +
       '</div></div>' +
+      '<div class="field-group"><div class="field-label">Moisture sensor options</div><div class="toggle-row">' +
+        this._toggle('Hide moisture-tracked plants from Upcoming', 'exclude_moisture_from_upcoming', this._get('exclude_moisture_from_upcoming', false)) +
+        this._toggle('Show moisture % instead of watering days in Overview', 'show_moisture_in_overview', this._get('show_moisture_in_overview', false)) +
+      '</div>' +
+        '<div class="field-hint">These options only affect plants with an active moisture sensor reporting a value. Plants without a sensor are unaffected.</div>' +
+      '</div>' +
       '<div class="field-group"><div class="field-label">Label alignment</div>' +
         '<div class="tri-btns" style="gap:6px;">' +
           '<button class="tri-btn ' + (align === 'left'   ? 'active-def' : '') + '" data-tri="label_align" data-val="left">Left</button>'   +
