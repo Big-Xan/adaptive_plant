@@ -216,6 +216,10 @@ overdue_color: '#e05c5c'  # color for overdue chips and indicators
 show_background: true     # set false for transparent/frosted glass themes
 pin_hold_button: false    # set true to fix hold bar to bottom of card
 
+# Moisture sensor options
+exclude_moisture_from_upcoming: false  # hide moisture-tracked plants from Upcoming tab
+show_moisture_in_overview: false       # show live moisture % instead of watering days in Overview
+
 # Overview sort order
 overview_sort: alphabetical   # alphabetical | health | watering
 
