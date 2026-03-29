@@ -123,16 +123,16 @@ class PlantData:
 
     @property
     def moisture_sensor(self) -> str | None:
-        return self._entry.data.get(CONF_MOISTURE_SENSOR)
+        return self._entry.options.get(CONF_MOISTURE_SENSOR) or self._entry.data.get(CONF_MOISTURE_SENSOR)
 
     @property
     def dry_threshold(self) -> float | None:
-        val = self._entry.data.get(CONF_DRY_THRESHOLD)
+        val = self._entry.options.get(CONF_DRY_THRESHOLD) if CONF_DRY_THRESHOLD in self._entry.options else self._entry.data.get(CONF_DRY_THRESHOLD)
         return float(val) if val is not None else None
 
     @property
     def wet_threshold(self) -> float | None:
-        val = self._entry.data.get(CONF_WET_THRESHOLD)
+        val = self._entry.options.get(CONF_WET_THRESHOLD) if CONF_WET_THRESHOLD in self._entry.options else self._entry.data.get(CONF_WET_THRESHOLD)
         return float(val) if val is not None else None
 
     # ── Mutable config ───────────────────────────────────────────────────────────
