@@ -168,7 +168,7 @@ The card is fully configurable via the visual editor — no YAML required. The c
 type: custom:adaptive-plant-card
 ```
 
-**Using native HA mdi icons, centered in-room labels with color changed to gold, height max set with mark all tasks completed button pinned to the bottom of the card so it's always in the same place.:**
+**Using native HA mdi icons, centered in-room labels with color changed to gold, height max set with mark all tasks completed button pinned to the bottom of the card so it's always in the same place:**
 
 ![Adaptive Plant Card with MDI icons](https://github.com/user-attachments/assets/27e1bb06-9ece-4d09-9fa4-999f80cbdd84)
 ```yaml
