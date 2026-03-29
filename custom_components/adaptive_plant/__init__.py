@@ -145,6 +145,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # so adding/changing/removing a sensor takes effect without a full restart.
     async def _handle_options_update(hass: HomeAssistant, entry: ConfigEntry) -> None:
         _register_moisture_listener()
+        plant._notify_listeners()
 
     entry.async_on_unload(entry.add_update_listener(_handle_options_update))
 
