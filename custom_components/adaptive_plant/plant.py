@@ -20,11 +20,14 @@ from .const import (
     CONF_EARLY_WATERING_THRESHOLD,
     CONF_ENABLE_FERTILIZATION,
     CONF_ENABLE_IMAGE,
+    CONF_ENABLE_LATIN_NAME,
     CONF_ENABLE_NOTES,
     CONF_HEALTH_PROMPT_INTERVAL,
     CONF_IMAGE_PATH,
     CONF_LABEL,
+    CONF_LATIN_NAME,
     CONF_MOISTURE_SENSOR,
+    CONF_NOTES_ENABLED,
     CONF_PLANT_NAME,
     CONF_SNOOZE_THRESHOLD,
     CONF_WET_THRESHOLD,
@@ -107,7 +110,20 @@ class PlantData:
 
     @property
     def enable_notes(self) -> bool:
+        # Options override takes precedence — allows toggling after setup.
+        # Falls back to the original entry.data value set during setup.
+        if CONF_NOTES_ENABLED in self._entry.options:
+            return bool(self._entry.options[CONF_NOTES_ENABLED])
         return bool(self._entry.data.get(CONF_ENABLE_NOTES, False))
+
+    @property
+    def enable_latin_name(self) -> bool:
+        return bool(self._entry.data.get(CONF_ENABLE_LATIN_NAME, False))
+
+    @property
+    def latin_name(self) -> str | None:
+        val = self._entry.options.get(CONF_LATIN_NAME) or self._entry.data.get(CONF_LATIN_NAME)
+        return val.strip() if val and val.strip() else None
 
     @property
     def enable_image(self) -> bool:
@@ -423,6 +439,9 @@ class PlantData:
 
     async def set_notes(self, value: str) -> None:
         await self._persist({STATE_NOTES: value})
+
+    async def set_latin_name(self, value: str) -> None:
+        await self._persist({CONF_LATIN_NAME: value.strip() or ""})
 
     # ── Event-driven callbacks ───────────────────────────────────────────────────
 
