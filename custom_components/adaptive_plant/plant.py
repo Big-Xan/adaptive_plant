@@ -332,26 +332,37 @@ class PlantData:
         await self._persist({OPT_WATERING_INTERVAL: int(days)})
 
     async def snooze_watering(self) -> None:
-        """Push next watering (and fertilization if also due today or overdue) forward by 1 day."""
-        today = date.today()
+        """Push next watering and/or fertilization forward by 1 day if due or overdue.
 
+        Watering is only snoozed if it is actually due or overdue today — pressing
+        Snooze when only fertilization is due must not touch the watering date or
+        the adaptive snooze streak counter.
+        """
+        today = date.today()
+        updates: dict = {}
+
+        # Snooze watering only if it is due or overdue
         nw = self.next_watering
+        watering_due = False
         if nw:
             try:
-                new_next_watering = (date.fromisoformat(nw) + timedelta(days=1)).isoformat()
+                nw_date = date.fromisoformat(nw)
+                if nw_date <= today:
+                    watering_due = True
+                    updates[STATE_NEXT_WATERING] = (nw_date + timedelta(days=1)).isoformat()
+                    _LOGGER.debug(
+                        "%s: watering due — snoozing to %s",
+                        self.plant_name, updates[STATE_NEXT_WATERING],
+                    )
             except ValueError:
-                new_next_watering = (today + timedelta(days=1)).isoformat()
-        else:
-            new_next_watering = (today + timedelta(days=1)).isoformat()
+                pass
 
-        updates = {STATE_NEXT_WATERING: new_next_watering}
-
-        # Only track snooze streak for schedule-driven plants — moisture sensor
-        # plants snooze silently without affecting the adaptive counter.
-        if not self.moisture_sensor:
+        # Only track snooze streak when watering was actually due and the plant
+        # is schedule-driven — moisture sensor plants snooze silently.
+        if watering_due and not self.moisture_sensor:
             updates[STATE_SNOOZED_THIS_PERIOD] = True
 
-        # Also snooze fertilization if it is due today or overdue
+        # Snooze fertilization if it is due today or overdue
         if self.enable_fertilization:
             nf = self.next_fertilized
             if nf:
@@ -360,7 +371,7 @@ class PlantData:
                     if nf_date <= today:
                         updates[STATE_NEXT_FERTILIZED] = (nf_date + timedelta(days=1)).isoformat()
                         _LOGGER.debug(
-                            "%s: fertilization also due — snoozing to %s",
+                            "%s: fertilization due — snoozing to %s",
                             self.plant_name, updates[STATE_NEXT_FERTILIZED],
                         )
                 except ValueError:
