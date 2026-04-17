@@ -16,6 +16,9 @@ CONF_MOISTURE_SENSOR = "moisture_sensor"
 CONF_DRY_THRESHOLD = "dry_threshold"
 CONF_WET_THRESHOLD = "wet_threshold"
 CONF_LABEL = "label"
+CONF_ENABLE_LATIN_NAME = "enable_latin_name"
+CONF_LATIN_NAME = "latin_name"
+CONF_NOTES_ENABLED = "notes_enabled"
 
 # ── Config entry options keys (mutable at runtime) ─────────────────────────────
 OPT_WATERING_INTERVAL = "watering_interval_days"
