@@ -16,13 +16,16 @@ from .const import (
     CONF_EARLY_WATERING_THRESHOLD,
     CONF_ENABLE_FERTILIZATION,
     CONF_ENABLE_IMAGE,
+    CONF_ENABLE_LATIN_NAME,
     CONF_ENABLE_NOTES,
     CONF_HEALTH_PROMPT_INTERVAL,
     CONF_IMAGE_PATH,
     CONF_INITIAL_LAST_FERTILIZED,
     CONF_INITIAL_LAST_WATERED,
     CONF_LABEL,
+    CONF_LATIN_NAME,
     CONF_MOISTURE_SENSOR,
+    CONF_NOTES_ENABLED,
     CONF_PLANT_NAME,
     CONF_SNOOZE_THRESHOLD,
     CONF_WET_THRESHOLD,
@@ -45,6 +48,7 @@ WATERING_DATE_NEVER = "never"
 def _basic_schema(defaults: dict) -> vol.Schema:
     return vol.Schema({
         vol.Required(CONF_PLANT_NAME, default=defaults.get(CONF_PLANT_NAME, "")): selector.selector({"text": {}}),
+        vol.Optional(CONF_LATIN_NAME, default=defaults.get(CONF_LATIN_NAME, "")): selector.selector({"text": {}}),
         vol.Optional(CONF_AREA): selector.selector({"area": {}}),
         vol.Optional(CONF_LABEL, default=defaults.get(CONF_LABEL, "")): selector.selector({"text": {}}),
         vol.Required(OPT_WATERING_INTERVAL, default=defaults.get(OPT_WATERING_INTERVAL, DEFAULT_WATERING_INTERVAL)): selector.selector(
@@ -66,6 +70,7 @@ def _features_schema(defaults: dict) -> vol.Schema:
     return vol.Schema({
         vol.Required(CONF_ENABLE_FERTILIZATION, default=defaults.get(CONF_ENABLE_FERTILIZATION, False)): selector.selector({"boolean": {}}),
         vol.Required(CONF_ENABLE_NOTES, default=defaults.get(CONF_ENABLE_NOTES, False)): selector.selector({"boolean": {}}),
+        vol.Required(CONF_ENABLE_LATIN_NAME, default=defaults.get(CONF_ENABLE_LATIN_NAME, False)): selector.selector({"boolean": {}}),
         vol.Required(CONF_ENABLE_IMAGE, default=defaults.get(CONF_ENABLE_IMAGE, False)): selector.selector({"boolean": {}}),
         vol.Optional(CONF_MOISTURE_SENSOR): selector.selector(
             {"entity": {"domain": "sensor", "multiple": False}}
@@ -327,6 +332,19 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
                 else:
                     cleaned[CONF_LABEL] = lv
 
+            # Notes enabled toggle — stored in options as the runtime override.
+            # Always write it explicitly so toggling off is persisted even when
+            # the value is falsy and would otherwise be stripped by the cleaned filter.
+            cleaned[CONF_NOTES_ENABLED] = bool(user_input.get(CONF_NOTES_ENABLED, False))
+
+            # Latin name — normalise blank to absent
+            if CONF_LATIN_NAME in cleaned:
+                ln = cleaned[CONF_LATIN_NAME].strip()
+                if not ln:
+                    del cleaned[CONF_LATIN_NAME]
+                else:
+                    cleaned[CONF_LATIN_NAME] = ln
+
             # Handle moisture sensor selection.
             # The toggle is the authoritative clear mechanism — if it's off we
             # strip the sensor and thresholds regardless of the picker value,
@@ -378,6 +396,21 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
                 {"number": {"min": 1, "max": 365, "mode": "box", "unit_of_measurement": "days"}}
             ),
         }
+
+        # Notes toggle — always shown so users can enable/disable after setup.
+        # The current state is: options override > entry.data original setting.
+        notes_currently_enabled = bool(
+            current_opts.get(CONF_NOTES_ENABLED, entry.data.get(CONF_ENABLE_NOTES, False))
+        )
+        schema_fields[vol.Required(CONF_NOTES_ENABLED, default=notes_currently_enabled)] = selector.selector(
+            {"boolean": {}}
+        )
+
+        # Latin name — only shown if enabled at setup, editable here.
+        if entry.data.get(CONF_ENABLE_LATIN_NAME):
+            schema_fields[vol.Optional(CONF_LATIN_NAME, default=defaults.get(CONF_LATIN_NAME, ""))] = selector.selector(
+                {"text": {}}
+            )
 
         if entry.data.get(CONF_ENABLE_FERTILIZATION):
             schema_fields[vol.Required(OPT_FERTILIZATION_INTERVAL, default=defaults.get(OPT_FERTILIZATION_INTERVAL, DEFAULT_FERTILIZATION_INTERVAL))] = selector.selector(
