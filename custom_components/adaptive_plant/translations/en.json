@@ -7,6 +7,7 @@
         "description": "Set up basic care settings for your plant.",
         "data": {
           "plant_name": "Plant name",
+          "latin_name": "Latin name (optional)",
           "area": "Area",
           "label": "Location label (optional)",
           "watering_interval_days": "Watering interval (days)",
@@ -16,6 +17,7 @@
         },
         "data_description": {
           "plant_name": "A friendly name for this plant.",
+          "latin_name": "Optional scientific name for this plant (e.g. Monstera deliciosa).",
           "area": "Assign this plant to a Home Assistant area.",
           "label": "Optional sublabel to group plants within an area (e.g. Left shelf, Window sill). Leave blank if not needed.",
           "watering_interval_days": "How many days between waterings.",
@@ -30,6 +32,7 @@
         "data": {
           "enable_fertilization": "Track fertilization",
           "enable_notes": "Add a notes field",
+          "enable_latin_name": "Add a latin name field",
           "enable_image": "Show a plant image",
           "moisture_sensor": "Moisture sensor (optional)"
         },
@@ -109,11 +112,14 @@
           "health_prompt_interval_days": "Health prompt interval (days)",
           "fertilization_interval_days": "Fertilization interval (days)",
           "image_path": "Image path (/local/...)",
+          "notes_enabled": "Enable notes",
+          "latin_name": "Latin name",
           "moisture_sensor_enabled": "Enable moisture sensor",
           "moisture_sensor": "Moisture sensor"
         },
         "data_description": {
           "label": "Optional sublabel to group plants within an area (e.g. Left shelf, Window sill). Leave blank to remove.",
+          "notes_enabled": "Toggle to enable or disable the notes field for this plant.",
           "moisture_sensor_enabled": "Toggle off to remove the moisture sensor and clear all thresholds.",
           "moisture_sensor": "Select a sensor to drive automatic watering logic."
         }
@@ -165,7 +171,8 @@
       }
     },
     "text": {
-      "notes": { "name": "Notes" }
+      "notes": { "name": "Notes" },
+      "latin_name": { "name": "Latin name" }
     }
   }
 }
