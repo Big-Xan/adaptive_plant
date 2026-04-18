@@ -59,6 +59,12 @@ A fully local, event-driven Home Assistant custom integration for tracking and m
 - Labels can be added, changed, or removed at any time via the integration's settings
 - Unlabelled plants always appear first within their area
 
+### 🔬 Latin Name (optional)
+- Store the scientific name for each plant
+- Enabled or disabled per plant during setup or via Configure at any time
+- Displayed on the companion card below the plant name (if enabled)
+> **Tip:** To remove a latin name after setup, open Configure and toggle Enable latin name off.
+
 ---
 
 ## Installation
@@ -85,6 +91,7 @@ A fully local, event-driven Home Assistant custom integration for tracking and m
    - Last watered date (Today / Yesterday / Custom / Haven't yet)
    - Last fertilized date (if enabled)
    - Image path (if enabled)
+   - Add Latin name (if enabled)
    - Moisture thresholds (if a sensor was selected)
 
 To edit any setting after setup, go to **Settings → Devices & Services → Adaptive Plant → Configure**.
@@ -116,6 +123,7 @@ Each plant creates a device with the following entities:
 | Mark fertilized | Button | *(if fertilization enabled)* |
 | Notes | Text | *(if notes enabled)* |
 | Soil moisture | Sensor | Diagnostic — live reading from linked moisture sensor *(if moisture sensor configured)* |
+|Latin name | Text | (if latin name enabled)
 ---
 
 ## Adaptive Logic
@@ -126,7 +134,7 @@ If you press **Mark Watered** before the scheduled date, an early watering count
 ### Watering interval extension
 If you press **Snooze today's tasks** during a watering period and then water the plant, a snooze streak counter increments. Once it reaches the configured threshold across consecutive periods, the watering interval increases by 1 day (maximum 365). The streak resets if you water without snoozing.
 
-> **Note:** Snoozing and then watering the same plant on the same day will count that period as both early and snoozed. This is a known edge case that will be addressed in a future release.
+> **Note:** Snoozing and then watering the same plant on the same day will count that period as both early and snoozed. This is a known edge case and _may_ be addressed in a future release. In the meantime.... don't do that? Why would you do that? 
 
 ---
 
