@@ -81,6 +81,13 @@
           "image_path": "Image path (/local/...)"
         }
       },
+      "latin_name": {
+        "title": "Latin Name",
+        "description": "Enter the scientific name for this plant (e.g. Monstera deliciosa). Leave blank to skip.",
+        "data": {
+          "latin_name": "Latin name"
+        }
+      },
       "moisture": {
         "title": "Moisture Thresholds",
         "description": "Set the thresholds for dry and wet moisture readings.",
@@ -114,6 +121,7 @@
           "image_path": "Image path (/local/...)",
           "notes_enabled": "Enable notes",
           "latin_name": "Latin name",
+          "enable_latin_name": "Enable latin name",
           "moisture_sensor_enabled": "Enable moisture sensor",
           "moisture_sensor": "Moisture sensor"
         },
