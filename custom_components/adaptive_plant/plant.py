@@ -118,11 +118,19 @@ class PlantData:
 
     @property
     def enable_latin_name(self) -> bool:
+        # Options override takes precedence — allows enabling after setup.
+        if CONF_ENABLE_LATIN_NAME in self._entry.options:
+            return bool(self._entry.options[CONF_ENABLE_LATIN_NAME])
         return bool(self._entry.data.get(CONF_ENABLE_LATIN_NAME, False))
 
     @property
     def latin_name(self) -> str | None:
-        val = self._entry.options.get(CONF_LATIN_NAME) or self._entry.data.get(CONF_LATIN_NAME)
+        # Check options first using key presence — an empty string in options
+        # means the user intentionally cleared it, so don't fall back to entry.data.
+        if CONF_LATIN_NAME in self._entry.options:
+            val = self._entry.options[CONF_LATIN_NAME]
+            return val.strip() if val and val.strip() else None
+        val = self._entry.data.get(CONF_LATIN_NAME)
         return val.strip() if val and val.strip() else None
 
     @property
