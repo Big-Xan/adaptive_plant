@@ -34,7 +34,7 @@ class NotesText(TextEntity):
     _attr_translation_key = "notes"
     _attr_mode = TextMode.TEXT
     _attr_native_min = 0
-    _attr_native_max = 1000
+    _attr_native_max = 255
     _attr_icon = "mdi:note-text"
 
     def __init__(self, plant: PlantData, entry: ConfigEntry) -> None:
@@ -50,6 +50,10 @@ class NotesText(TextEntity):
             manufacturer="Adaptive Plant",
             model="Plant Monitor",
         )
+
+    @property
+    def available(self) -> bool:
+        return self._plant.enable_notes
 
     @property
     def native_value(self) -> str:
@@ -93,6 +97,10 @@ class LatinNameText(TextEntity):
             manufacturer="Adaptive Plant",
             model="Plant Monitor",
         )
+
+    @property
+    def available(self) -> bool:
+        return self._plant.enable_latin_name
 
     @property
     def native_value(self) -> str:
