@@ -48,7 +48,6 @@ WATERING_DATE_NEVER = "never"
 def _basic_schema(defaults: dict) -> vol.Schema:
     return vol.Schema({
         vol.Required(CONF_PLANT_NAME, default=defaults.get(CONF_PLANT_NAME, "")): selector.selector({"text": {}}),
-        vol.Optional(CONF_LATIN_NAME, default=defaults.get(CONF_LATIN_NAME, "")): selector.selector({"text": {}}),
         vol.Optional(CONF_AREA): selector.selector({"area": {}}),
         vol.Optional(CONF_LABEL, default=defaults.get(CONF_LABEL, "")): selector.selector({"text": {}}),
         vol.Required(OPT_WATERING_INTERVAL, default=defaults.get(OPT_WATERING_INTERVAL, DEFAULT_WATERING_INTERVAL)): selector.selector(
@@ -126,6 +125,14 @@ def _fertilize_schema(defaults: dict) -> vol.Schema:
     return vol.Schema({
         vol.Required(OPT_FERTILIZATION_INTERVAL, default=defaults.get(OPT_FERTILIZATION_INTERVAL, DEFAULT_FERTILIZATION_INTERVAL)): selector.selector(
             {"number": {"min": 1, "max": 365, "mode": "box", "unit_of_measurement": "days"}}
+        ),
+    })
+
+
+def _latin_name_schema(defaults: dict) -> vol.Schema:
+    return vol.Schema({
+        vol.Optional(CONF_LATIN_NAME, default=defaults.get(CONF_LATIN_NAME, "")): selector.selector(
+            {"text": {}}
         ),
     })
 
@@ -224,6 +231,8 @@ class AdaptivePlantConfigFlow(ConfigFlow, domain=DOMAIN):
     async def _after_watering(self) -> FlowResult:
         if self._data.get(CONF_ENABLE_FERTILIZATION):
             return await self.async_step_fertilize()
+        if self._data.get(CONF_ENABLE_LATIN_NAME):
+            return await self.async_step_latin_name()
         if self._data.get(CONF_ENABLE_IMAGE):
             return await self.async_step_image()
         if self._data.get(CONF_MOISTURE_SENSOR):
@@ -264,11 +273,28 @@ class AdaptivePlantConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(step_id="last_fertilized_custom", data_schema=_last_fertilized_custom_schema(), errors=errors)
 
     async def _after_fertilizing(self) -> FlowResult:
+        if self._data.get(CONF_ENABLE_LATIN_NAME):
+            return await self.async_step_latin_name()
         if self._data.get(CONF_ENABLE_IMAGE):
             return await self.async_step_image()
         if self._data.get(CONF_MOISTURE_SENSOR):
             return await self.async_step_moisture()
         return self._create_entry()
+
+    async def async_step_latin_name(self, user_input: dict | None = None) -> FlowResult:
+        if user_input is not None:
+            name = user_input.get(CONF_LATIN_NAME, "").strip()
+            if name:
+                self._data[CONF_LATIN_NAME] = name
+            if self._data.get(CONF_ENABLE_IMAGE):
+                return await self.async_step_image()
+            if self._data.get(CONF_MOISTURE_SENSOR):
+                return await self.async_step_moisture()
+            return self._create_entry()
+        return self.async_show_form(
+            step_id="latin_name",
+            data_schema=_latin_name_schema(self._data),
+        )
 
     async def async_step_image(self, user_input: dict | None = None) -> FlowResult:
         errors: dict[str, str] = {}
@@ -332,18 +358,19 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
                 else:
                     cleaned[CONF_LABEL] = lv
 
-            # Notes enabled toggle — stored in options as the runtime override.
-            # Always write it explicitly so toggling off is persisted even when
-            # the value is falsy and would otherwise be stripped by the cleaned filter.
+            # Notes enabled toggle — always write explicitly so falsy value persists
             cleaned[CONF_NOTES_ENABLED] = bool(user_input.get(CONF_NOTES_ENABLED, False))
 
-            # Latin name — normalise blank to absent
-            if CONF_LATIN_NAME in cleaned:
-                ln = cleaned[CONF_LATIN_NAME].strip()
-                if not ln:
-                    del cleaned[CONF_LATIN_NAME]
-                else:
-                    cleaned[CONF_LATIN_NAME] = ln
+            # Latin name toggle — write explicitly, and handle the text field.
+            latin_enabled = bool(user_input.get(CONF_ENABLE_LATIN_NAME, False))
+            cleaned[CONF_ENABLE_LATIN_NAME] = latin_enabled
+            if latin_enabled:
+                # Use key-presence check so empty string is treated as intentional clear
+                raw_latin = user_input.get(CONF_LATIN_NAME, "")
+                cleaned[CONF_LATIN_NAME] = raw_latin.strip() if raw_latin else ""
+            else:
+                # Toggle off — remove stored latin name
+                cleaned.pop(CONF_LATIN_NAME, None)
 
             # Handle moisture sensor selection.
             # The toggle is the authoritative clear mechanism — if it's off we
@@ -364,9 +391,11 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
                 merged = {**current_opts, **cleaned}
                 for key in (CONF_MOISTURE_SENSOR, CONF_DRY_THRESHOLD, CONF_WET_THRESHOLD):
                     merged.pop(key, None)
-                # Also clear blanked fields
+                # Also clear blanked fields — but skip keys we've already
+                # handled explicitly above (boolean toggles that are legitimately false)
+                _skip_clear = {CONF_NOTES_ENABLED, CONF_ENABLE_LATIN_NAME}
                 for k, v in user_input.items():
-                    if v in (None, "") and k in merged:
+                    if k not in _skip_clear and v in (None, "") and k in merged:
                         del merged[k]
                 return self.async_create_entry(title="", data=merged)
 
@@ -397,21 +426,6 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
             ),
         }
 
-        # Notes toggle — always shown so users can enable/disable after setup.
-        # The current state is: options override > entry.data original setting.
-        notes_currently_enabled = bool(
-            current_opts.get(CONF_NOTES_ENABLED, entry.data.get(CONF_ENABLE_NOTES, False))
-        )
-        schema_fields[vol.Required(CONF_NOTES_ENABLED, default=notes_currently_enabled)] = selector.selector(
-            {"boolean": {}}
-        )
-
-        # Latin name — only shown if enabled at setup, editable here.
-        if entry.data.get(CONF_ENABLE_LATIN_NAME):
-            schema_fields[vol.Optional(CONF_LATIN_NAME, default=defaults.get(CONF_LATIN_NAME, ""))] = selector.selector(
-                {"text": {}}
-            )
-
         if entry.data.get(CONF_ENABLE_FERTILIZATION):
             schema_fields[vol.Required(OPT_FERTILIZATION_INTERVAL, default=defaults.get(OPT_FERTILIZATION_INTERVAL, DEFAULT_FERTILIZATION_INTERVAL))] = selector.selector(
                 {"number": {"min": 1, "max": 365, "mode": "box", "unit_of_measurement": "days"}}
@@ -422,10 +436,30 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
                 {"text": {}}
             )
 
-        # Always show moisture sensor picker so users can add, change, or clear it.
-        # A boolean toggle acts as the clear mechanism since the entity selector
-        # widget cannot be truly blanked in the HA UI (clicking X still submits
-        # the previous value). Toggle off = clear sensor + thresholds.
+        # ── Toggles — grouped together at the bottom ─────────────────────────
+        # Notes toggle — always shown, options override takes priority over entry.data
+        notes_currently_enabled = bool(
+            current_opts.get(CONF_NOTES_ENABLED, entry.data.get(CONF_ENABLE_NOTES, False))
+        )
+        schema_fields[vol.Required(CONF_NOTES_ENABLED, default=notes_currently_enabled)] = selector.selector(
+            {"boolean": {}}
+        )
+
+        # Latin name toggle — always shown so users can enable it after setup.
+        # If already enabled, also show the text field to edit the value.
+        latin_currently_enabled = bool(
+            current_opts.get(CONF_ENABLE_LATIN_NAME, entry.data.get(CONF_ENABLE_LATIN_NAME, False))
+        )
+        schema_fields[vol.Required(CONF_ENABLE_LATIN_NAME, default=latin_currently_enabled)] = selector.selector(
+            {"boolean": {}}
+        )
+        if latin_currently_enabled:
+            current_latin = current_opts.get(CONF_LATIN_NAME) or entry.data.get(CONF_LATIN_NAME, "")
+            schema_fields[vol.Optional(CONF_LATIN_NAME, default=current_latin)] = selector.selector(
+                {"text": {}}
+            )
+
+        # Moisture sensor toggle + picker — always shown
         has_moisture = bool(current_moisture)
         schema_fields[vol.Required("moisture_sensor_enabled", default=has_moisture)] = selector.selector(
             {"boolean": {}}
