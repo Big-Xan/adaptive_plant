@@ -22,6 +22,8 @@ from .const import (
     CONF_ENABLE_IMAGE,
     CONF_ENABLE_LATIN_NAME,
     CONF_ENABLE_NOTES,
+    CONF_ENABLE_REPOTTING,
+    CONF_FERTILIZATION_ENABLED,
     CONF_HEALTH_PROMPT_INTERVAL,
     CONF_IMAGE_PATH,
     CONF_LABEL,
@@ -29,6 +31,7 @@ from .const import (
     CONF_MOISTURE_SENSOR,
     CONF_NOTES_ENABLED,
     CONF_PLANT_NAME,
+    CONF_REPOTTING_ENABLED,
     CONF_SNOOZE_THRESHOLD,
     CONF_WET_THRESHOLD,
     DEFAULT_EARLY_WATERING_THRESHOLD,
@@ -46,6 +49,8 @@ from .const import (
     STATE_HEALTH,
     STATE_HEALTH_LAST_UPDATED,
     STATE_LAST_FERTILIZED,
+    STATE_LAST_REPOTTED,
+    STATE_REPOTTED_DATE_INPUT,
     STATE_LAST_WATERED,
     STATE_NEXT_FERTILIZED,
     STATE_NEXT_WATERING,
@@ -106,6 +111,10 @@ class PlantData:
 
     @property
     def enable_fertilization(self) -> bool:
+        # Options override takes precedence — allows toggling after setup
+        # (including enabling it on plants where it was skipped at setup).
+        if CONF_FERTILIZATION_ENABLED in self._entry.options:
+            return bool(self._entry.options[CONF_FERTILIZATION_ENABLED])
         return bool(self._entry.data.get(CONF_ENABLE_FERTILIZATION, False))
 
     @property
@@ -122,6 +131,13 @@ class PlantData:
         if CONF_ENABLE_LATIN_NAME in self._entry.options:
             return bool(self._entry.options[CONF_ENABLE_LATIN_NAME])
         return bool(self._entry.data.get(CONF_ENABLE_LATIN_NAME, False))
+
+    @property
+    def enable_repotting(self) -> bool:
+        # Options override takes precedence — allows toggling after setup.
+        if CONF_REPOTTING_ENABLED in self._entry.options:
+            return bool(self._entry.options[CONF_REPOTTING_ENABLED])
+        return bool(self._entry.data.get(CONF_ENABLE_REPOTTING, False))
 
     @property
     def latin_name(self) -> str | None:
@@ -238,6 +254,15 @@ class PlantData:
     @property
     def notes(self) -> str:
         return self._entry.options.get(STATE_NOTES, "")
+
+    @property
+    def last_repotted(self) -> str | None:
+        return self._entry.options.get(STATE_LAST_REPOTTED)
+
+    @property
+    def repotted_date_input(self) -> str:
+        """The user-editable date correction field. Empty string when not set."""
+        return self._entry.options.get(STATE_REPOTTED_DATE_INPUT, "")
 
     # ── Computed ─────────────────────────────────────────────────────────────────
 
@@ -450,6 +475,40 @@ class PlantData:
 
     async def set_latin_name(self, value: str) -> None:
         await self._persist({CONF_LATIN_NAME: value.strip() or ""})
+
+    # ── Repotting ─────────────────────────────────────────────────────────────
+
+    async def mark_repotted(self) -> None:
+        """Stamp the repotting date.
+
+        Uses the value of the repotted_date_input text entity if it contains a
+        valid ISO date, otherwise falls back to today. Clears the input field
+        after stamping so it doesn't linger as a stale suggestion.
+        """
+        today = date.today()
+        raw = self.repotted_date_input.strip()
+        stamp: str
+        if raw:
+            try:
+                date.fromisoformat(raw)   # validate
+                stamp = raw
+            except ValueError:
+                _LOGGER.warning(
+                    "%s: repotted_date_input '%s' is not a valid ISO date — using today",
+                    self.plant_name, raw,
+                )
+                stamp = today.isoformat()
+        else:
+            stamp = today.isoformat()
+
+        await self._persist({
+            STATE_LAST_REPOTTED: stamp,
+            STATE_REPOTTED_DATE_INPUT: "",   # clear the correction field
+        })
+
+    async def set_repotted_date_input(self, value: str) -> None:
+        """Store a prospective repotting date typed by the user."""
+        await self._persist({STATE_REPOTTED_DATE_INPUT: value.strip()})
 
     # ── Event-driven callbacks ───────────────────────────────────────────────────
 
