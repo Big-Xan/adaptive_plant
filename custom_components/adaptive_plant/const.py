@@ -19,10 +19,13 @@ CONF_LABEL = "label"
 CONF_ENABLE_LATIN_NAME = "enable_latin_name"
 CONF_LATIN_NAME = "latin_name"
 CONF_NOTES_ENABLED = "notes_enabled"
+CONF_ENABLE_REPOTTING = "enable_repotting"
 
 # ── Config entry options keys (mutable at runtime) ─────────────────────────────
 OPT_WATERING_INTERVAL = "watering_interval_days"
 OPT_FERTILIZATION_INTERVAL = "fertilization_interval_days"
+CONF_FERTILIZATION_ENABLED = "fertilization_enabled"
+CONF_REPOTTING_ENABLED = "repotting_enabled"
 
 # ── State keys (stored in config entry options) ────────────────────────────────
 STATE_LAST_WATERED = "last_watered"
@@ -33,6 +36,11 @@ STATE_HEALTH_LAST_UPDATED = "health_last_updated"
 STATE_LAST_FERTILIZED = "last_fertilized"
 STATE_NEXT_FERTILIZED = "next_fertilized"
 STATE_NOTES = "notes"
+STATE_LAST_REPOTTED = "last_repotted"
+STATE_REPOTTED_DATE_INPUT = "repotted_date_input"
+
+# ── Setup-wizard resolved keys (stored in entry.data, seeded to options) ──────
+CONF_RESOLVED_LAST_REPOTTED = "_resolved_last_repotted"
 
 # ── Health select options ──────────────────────────────────────────────────────
 HEALTH_OPTIONS = ["excellent", "good", "poor", "sick"]
