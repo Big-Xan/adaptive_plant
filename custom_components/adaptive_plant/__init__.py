@@ -23,6 +23,7 @@ from .const import (
     STATE_HEALTH,
     STATE_HEALTH_LAST_UPDATED,
     STATE_LAST_FERTILIZED,
+    STATE_LAST_REPOTTED,
     STATE_LAST_WATERED,
     STATE_NEXT_FERTILIZED,
     STATE_NEXT_WATERING,
@@ -54,6 +55,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if last_fertilized:
             initial_options[STATE_LAST_FERTILIZED] = last_fertilized
         initial_options[STATE_NEXT_FERTILIZED] = next_fertilized
+        seeded = True
+
+    # Seed last_repotted from setup wizard on first load
+    resolved_last_repotted = entry.data.get("_resolved_last_repotted")
+    if resolved_last_repotted and STATE_LAST_REPOTTED not in initial_options:
+        initial_options[STATE_LAST_REPOTTED] = resolved_last_repotted
         seeded = True
 
     # Seed watering interval from data into options if not already there
