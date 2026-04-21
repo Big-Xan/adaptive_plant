@@ -1,4 +1,4 @@
-// Adaptive Plant Card v13
+// Adaptive Plant Card v14
 
 class AdaptivePlantCard extends HTMLElement {
   constructor() {
@@ -37,6 +37,17 @@ class AdaptivePlantCard extends HTMLElement {
     // v13 options
     this._excludeMoistureFromUpcoming = config.exclude_moisture_from_upcoming === true;
     this._showMoistureInOverview      = config.show_moisture_in_overview      === true;
+
+    // v15 options
+    this._showRepotting       = config.show_repotting       !== false;
+    this._repottedButtonColor = config.repotted_button_color || '#c8975a';
+    this._repottedButtonIcon  = config.repotted_button_icon  || null;
+    this._showLatinName       = config.show_latin_name       === true;
+    this._latinNameSize       = (config.latin_name_size !== undefined && config.latin_name_size !== null && config.latin_name_size !== '')
+                                  ? config.latin_name_size : null;
+    this._latinNameColor      = config.latin_name_color  || null;
+    this._latinNamePadding    = (config.latin_name_padding !== undefined && config.latin_name_padding !== null && config.latin_name_padding !== '')
+                                  ? config.latin_name_padding : null;
 
     var ic = config.icons || {};
     this._icons = {
@@ -122,6 +133,39 @@ class AdaptivePlantCard extends HTMLElement {
       return '<ha-icon icon="' + value + '" style="--mdc-icon-size:' + size + ';color:' + color + ';display:inline-flex;align-items:center;"></ha-icon>';
     }
     return '<span class="emoji-icon">' + value + '</span>';
+  }
+
+  // ── Latin / scientific name line rendered below the plant name ────────────
+  _latinNameHtml(p) {
+    if (!this._showLatinName || !p.latinName) return '';
+    var size  = this._latinNameSize    ? this._latinNameSize    + 'px' : '11px';
+    var color = this._latinNameColor   ? this._latinNameColor          : 'var(--secondary-text-color,#888)';
+    var vpad  = this._latinNamePadding ? this._latinNamePadding + 'px' : '1px';
+    return '<div class="plant-latin" style="font-size:' + size + ';color:' + color + ';padding-top:' + vpad + ';padding-bottom:' + vpad + ';">' + p.latinName + '</div>';
+  }
+
+  // ── Mark Repotted detail-action button ────────────────────────────────────
+  _repottedBtn(p) {
+    var color = this._repottedButtonColor;
+    var icon  = this._repottedButtonIcon
+      ? this._renderIcon(this._repottedButtonIcon, color, '15px') + ' '
+      : '';
+    return '<button class="detail-btn btn-repotted" style="color:' + color + ';background:' + color + '26;"' +
+      ' data-repotted-entity="' + p.repottedDateInputId + '"' +
+      ' data-repotted-btn="' + p.btnRepotted + '"' +
+      ' data-plant-id="' + p.id + '">' +
+      icon + 'Mark Repotted' +
+    '</button>';
+  }
+
+  // ── Moisture pill for overview meta row ───────────────────────────────────
+  _moisturePill(p) {
+    var pct   = Math.round(p.moistureVal);
+    var color = '#64b4ff';
+    return '<span class="meta-item moisture-pill">' +
+      this._renderIcon(this._icons.water, color, '12px') +
+      ' <span style="color:' + color + ';font-weight:600;">' + pct + '%</span>' +
+    '</span>';
   }
 
   _bootstrapShell() {
@@ -234,6 +278,15 @@ class AdaptivePlantCard extends HTMLElement {
         self._updateContent();
       });
     });
+    root.querySelectorAll('[data-repotted-entity]').forEach(function(el) {
+      el.addEventListener('click', function(e) {
+        e.stopPropagation();
+        var input = root.querySelector('#repotted-input-' + el.dataset.plantId);
+        var val   = input ? input.value.trim() : '';
+        self._setValue(el.dataset.repottedEntity, val);
+        self._press(el.dataset.repottedBtn);
+      });
+    });
   }
 
   _plants() {
@@ -266,6 +319,11 @@ class AdaptivePlantCard extends HTMLElement {
         if (!isNaN(parsed)) moistureVal = parsed;
       }
 
+      // Latin / scientific name — null if entity absent or unavailable
+      var latinSt   = st('_latin_name');
+      var latinName = (latinSt && latinSt.state && latinSt.state !== 'unknown' && latinSt.state !== 'unavailable')
+        ? latinSt.state : null;
+
       return {
         id:                   devId,
         name:                 dev.name_by_user || dev.name || 'Plant',
@@ -285,8 +343,13 @@ class AdaptivePlantCard extends HTMLElement {
         btnSnooze:            find('_snooze_today_s_tasks'),
         btnFert:              find('_mark_fertilized'),
         btnConfirmHealth:     find('_confirm_health'),
+        btnRepotted:          find('_mark_repotted'),
+        lastRepotted:         st('_last_repotted')         ? st('_last_repotted').state         : null,
+        repottedDateInputId:  find('_repotted_on'),
+        repottedDateInput:    (st('_repotted_on') && st('_repotted_on').state && st('_repotted_on').state !== 'unknown') ? st('_repotted_on').state : '',
         moistureVal:          moistureVal,   // float or null
         hasMoisture:          moistureVal !== null,
+        latinName:            latinName,     // string or null
       };
     }).sort(function(a, b) { return a.name.localeCompare(b.name); });
   }
@@ -356,21 +419,10 @@ class AdaptivePlantCard extends HTMLElement {
     var color   = overdue ? this._icons.health_confirm_overdue_color : this._icons.health_confirm_color;
     var label   = overdue ? 'Update Due' : 'Confirm Health';
     var icon    = this._renderIcon(this._icons.health_confirm, color, '15px');
-    var bgAlpha = '26';
-    var bg      = color + bgAlpha;
+    var bg      = color + '26';
     return '<button class="detail-btn btn-health" style="color:' + color + ';background:' + bg + ';" data-entity="' + p.btnConfirmHealth + '">' +
       icon + ' ' + label +
     '</button>';
-  }
-
-  // ── Moisture pill for overview meta row ──────────────────────────────────────
-  _moisturePill(p) {
-    var pct   = Math.round(p.moistureVal);
-    var color = '#64b4ff';
-    return '<span class="meta-item moisture-pill">' +
-      this._renderIcon(this._icons.water, color, '12px') +
-      ' <span style="color:' + color + ';font-weight:600;">' + pct + '%</span>' +
-    '</span>';
   }
 
   _renderToday(plants) {
@@ -400,6 +452,7 @@ class AdaptivePlantCard extends HTMLElement {
             self._avatar(p, 'today') +
             '<div class="plant-info">' +
               '<div class="plant-name">' + p.name + '</div>' +
+              self._latinNameHtml(p) +
               (self._showText('today') && p.health ? '<div class="plant-meta"><span class="health-badge" style="color:' + self._healthColor(p.health) + '">' + self._capitalise(p.health) + '</span></div>' : '') +
               '<div class="chips">' + (wu ? self._waterChip(p.daysWater) : '') + (fu ? self._fertChip(p.daysFert) : '') + '</div>' +
             '</div>' +
@@ -472,6 +525,7 @@ class AdaptivePlantCard extends HTMLElement {
               self._avatar(p, 'upcoming') +
               '<div class="plant-info">' +
                 '<div class="plant-name">' + p.name + '</div>' +
+                self._latinNameHtml(p) +
                 (self._showText('upcoming') && p.health ? '<div class="plant-meta"><span class="health-badge" style="color:' + self._healthColor(p.health) + '">' + self._capitalise(p.health) + '</span></div>' : '') +
                 '<div class="chips">' +
                   (pg.water ? '<span class="chip chip-water">' + self._renderIcon(self._icons.water,     self._icons.water_color,     '13px') + ' ' + pg.water.lbl + '</span>' : '') +
@@ -525,8 +579,6 @@ class AdaptivePlantCard extends HTMLElement {
           var showTxt = self._showText('overview');
 
           // v13: in the meta row, show moisture % instead of watering days
-          // when the plant has an active moisture reading and the option is on.
-          // Falls back to days string if moisture is unavailable.
           var waterMeta;
           if (self._showMoistureInOverview && p.hasMoisture) {
             waterMeta = self._moisturePill(p);
@@ -536,20 +588,22 @@ class AdaptivePlantCard extends HTMLElement {
             waterMeta = '';
           }
 
-          var hopts   = ['excellent','good','poor','sick'];
+          var hopts = ['excellent','good','poor','sick'];
           var row = '<div class="plant-row plant-row-click" data-expand="' + p.id + '">' +
             self._avatar(p, 'overview') +
             '<div class="plant-info">' +
               '<div class="plant-name">' + p.name + (urgent ? '<span class="urgent-dot"></span>' : '') + '</div>' +
+              self._latinNameHtml(p) +
               '<div class="plant-meta">' +
                 (showTxt && p.health ? '<span class="health-badge" style="color:' + self._healthColor(p.health) + '">' + self._capitalise(p.health) + '</span>' : '') +
                 waterMeta +
-                (p.daysFert  ? '<span class="meta-item">' + self._renderIcon(self._icons.fertilize, self._icons.fertilize_color, '12px') + ' ' + p.daysFert  + '</span>' : '') +
+                (p.daysFert ? '<span class="meta-item">' + self._renderIcon(self._icons.fertilize, self._icons.fertilize_color, '12px') + ' ' + p.daysFert + '</span>' : '') +
               '</div>' +
             '</div>' +
             '<div class="chevron">' + (isExp ? '▲' : '▼') + '</div>' +
           '</div>';
           if (!isExp) return row;
+
           var en = self._editingNotes === p.id;
           var notesHtml = '';
           if (p.notesEntityId) {
@@ -565,18 +619,39 @@ class AdaptivePlantCard extends HTMLElement {
                 '<span class="notes-edit-icon">✏️</span>' +
                 '</div></div>';
           }
+
+          // ── Repotted section ──────────────────────────────────────────────
+          // Last repotted date: always visible when plant has repotting configured
+          // Repotted-on date input: hidden when show_repotting is off
+          // Mark Repotted button: moved to detail-actions (rendered below)
+          var repottedRows = '';
+          if (p.btnRepotted) {
+            var lastRepottedVal = (p.lastRepotted && p.lastRepotted !== 'unknown' && p.lastRepotted !== 'unavailable')
+              ? '<span class="detail-value">' + p.lastRepotted + '</span>'
+              : '<span class="detail-value" style="color:var(--secondary-text-color,#888);font-style:italic;">Never</span>';
+            repottedRows = '<div class="detail-row"><span class="detail-label">Last repotted</span>' + lastRepottedVal + '</div>';
+            if (self._showRepotting) {
+              repottedRows += '<div class="detail-row repotted-row">' +
+                '<span class="detail-label">Repotted on</span>' +
+                '<input class="repotted-input" id="repotted-input-' + p.id + '" type="text" placeholder="YYYY-MM-DD (optional)" value="' + p.repottedDateInput + '" maxlength="10" />' +
+              '</div>';
+            }
+          }
+
           var detail = '<div class="plant-detail">' +
             (p.nextWatering   ? '<div class="detail-row"><span class="detail-label">Next watering</span><span class="detail-value">' + p.nextWatering + '</span></div>' : '') +
             (p.hasMoisture    ? '<div class="detail-row"><span class="detail-label">Soil moisture</span><span class="detail-value" style="color:#64b4ff;font-weight:600;">' + Math.round(p.moistureVal) + '%</span></div>' : '') +
             (p.nextFertilized ? '<div class="detail-row"><span class="detail-label">Next fertilization</span><span class="detail-value">' + p.nextFertilized + '</span></div>' : '') +
+            repottedRows +
             (p.healthEntityId ? '<div class="detail-row"><span class="detail-label">Health</span>' +
               '<select class="health-select" data-health-entity="' + p.healthEntityId + '">' +
                 hopts.map(function(o) { return '<option value="' + o + '"' + (o === p.health ? ' selected' : '') + '>' + self._capitalise(o) + '</option>'; }).join('') +
               '</select></div>' : '') +
             notesHtml +
             '<div class="detail-actions">' +
-              (p.btnWater         ? '<button class="detail-btn btn-water"  data-entity="' + p.btnWater        + '">' + self._renderIcon(self._icons.water,     self._icons.water_color,     '15px') + ' Mark Watered</button>'    : '') +
-              (p.btnFert          ? '<button class="detail-btn btn-fert"   data-entity="' + p.btnFert         + '">' + self._renderIcon(self._icons.fertilize, self._icons.fertilize_color, '15px') + ' Mark Fertilized</button>' : '') +
+              (p.btnWater         ? '<button class="detail-btn btn-water"  data-entity="' + p.btnWater  + '">' + self._renderIcon(self._icons.water,     self._icons.water_color,     '15px') + ' Mark Watered</button>'    : '') +
+              (p.btnFert          ? '<button class="detail-btn btn-fert"   data-entity="' + p.btnFert   + '">' + self._renderIcon(self._icons.fertilize, self._icons.fertilize_color, '15px') + ' Mark Fertilized</button>' : '') +
+              (self._showRepotting && p.btnRepotted ? self._repottedBtn(p) : '') +
               (p.btnConfirmHealth ? self._confirmHealthBtn(p) : '') +
             '</div>' +
           '</div>';
@@ -674,6 +749,7 @@ class AdaptivePlantCard extends HTMLElement {
       '.avatar-wrap{flex-shrink:0;}.avatar{width:44px;height:44px;border-radius:50%;overflow:hidden;background:#2a2a2a;display:flex;align-items:center;justify-content:center;transition:box-shadow 0.2s;}',
       '.avatar img{width:100%;height:100%;object-fit:cover;}.av-init{font-size:15px;font-weight:700;color:#7cb97e;}',
       '.plant-info{flex:1;min-width:0;}.plant-name{font-size:15px;font-weight:500;display:flex;align-items:center;gap:6px;}',
+      '.plant-latin{font-style:italic;line-height:1.3;}',
       '.plant-meta{display:flex;gap:8px;margin-top:3px;flex-wrap:wrap;align-items:center;}',
       '.meta-item{font-size:12px;color:var(--secondary-text-color,#888);display:flex;align-items:center;gap:3px;}.health-badge{font-size:12px;font-weight:600;}',
       '.moisture-pill{color:#64b4ff;}',
@@ -701,6 +777,10 @@ class AdaptivePlantCard extends HTMLElement {
       '.detail-btn{padding:7px 14px;border-radius:20px;border:none;cursor:pointer;font-size:13px;font-weight:500;display:inline-flex;align-items:center;gap:5px;transition:filter 0.15s;}',
       '.detail-btn.btn-water{background:rgba(100,180,255,0.15);color:#64b4ff;}.detail-btn.btn-fert{background:rgba(124,185,126,0.15);color:#7cb97e;}',
       '.detail-btn.btn-health{transition:filter 0.15s;}',
+      '.detail-btn.btn-repotted{white-space:nowrap;}',
+      '.repotted-row{gap:6px;}',
+      '.repotted-input{flex:1;min-width:0;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:var(--primary-text-color,#e5e5e5);font-size:13px;padding:5px 8px;outline:none;font-family:inherit;box-sizing:border-box;}',
+      '.repotted-input:focus{border-color:' + this._repottedButtonColor + ';}',
       '.detail-btn:hover{filter:brightness(1.25);}',
       '.empty{display:flex;flex-direction:column;align-items:center;padding:48px 16px;color:var(--secondary-text-color,#888);gap:8px;}',
       '.empty-icon{font-size:36px;}.empty p{margin:0;font-size:14px;}',
@@ -803,6 +883,22 @@ class AdaptivePlantCardEditor extends HTMLElement {
       '</div>' +
         '<div class="field-hint">These options only affect plants with an active moisture sensor reporting a value. Plants without a sensor are unaffected.</div>' +
       '</div>' +
+      '<div class="field-group"><div class="field-label">Repotting</div><div class="toggle-row">' +
+        this._toggle('Show Mark Repotting button & date input', 'show_repotting', this._get('show_repotting', true)) +
+      '</div>' +
+        '<div class="field-hint">When off, only the last repotted date is shown — the date input and button are hidden for all plants. Can still be set & updated via the integration page.</div>' +
+      '</div>' +
+      '<div class="field-group"><div class="field-label">Latin / Scientific name</div>' +
+        '<div class="toggle-row">' +
+          this._toggle('Show latin name below plant name', 'show_latin_name', this._get('show_latin_name', false)) +
+        '</div>' +
+        '<div class="field-hint">Reads from each plant\'s <em>_latin_name</em> text entity. Displayed in all three tabs.</div>' +
+        '<div class="field-row" style="margin-top:6px;">' +
+          this._textField('Font size (px)', 'latin_name_size', this._get('latin_name_size', ''), 'e.g. 11', 'number') +
+          this._colorField('Color', 'latin_name_color', this._get('latin_name_color', '#888888')) +
+        '</div>' +
+        this._textField('Vertical padding (px)', 'latin_name_padding', this._get('latin_name_padding', ''), 'e.g. 1', 'number') +
+      '</div>' +
       '<div class="field-group"><div class="field-label">Label alignment</div>' +
         '<div class="tri-btns" style="gap:6px;">' +
           '<button class="tri-btn ' + (align === 'left'   ? 'active-def' : '') + '" data-tri="label_align" data-val="left">Left</button>'   +
@@ -888,7 +984,7 @@ class AdaptivePlantCardEditor extends HTMLElement {
     var self = this;
     var row = function(label, ip, cp, di, dc) {
       return '<div class="icon-row"><span class="icon-label">' + label + '</span><div class="icon-inputs">' +
-        self._textField('Icon', ip, self._get(ip, di), di) + self._colorField('Color', cp, self._get(cp, dc)) +
+        self._textField('Icon', ip, self._get(ip, di), di || 'none') + self._colorField('Color', cp, self._get(cp, dc)) +
       '</div></div>';
     };
     return row('Water chip',          'icons.water',                        'icons.water_color',                  '💧',              '#64b4ff') +
@@ -900,7 +996,15 @@ class AdaptivePlantCardEditor extends HTMLElement {
            '<div class="icon-row"><span class="icon-label">Update Due color</span><div class="icon-inputs">' +
              '<div class="field-hint" style="margin:0;grid-column:1/-1;">Color used for both icon and button when a health check-in is overdue.</div>' +
              self._colorField('Overdue color', 'icons.health_confirm_overdue_color', self._get('icons.health_confirm_overdue_color', '#e05c5c')) +
-           '</div></div>';
+           '</div></div>' +
+           '<div class="icon-row">' +
+             '<span class="icon-label">Mark Repotted button</span>' +
+             '<div class="field-hint" style="margin:4px 0 6px;">Leave icon blank for a text-only button. Accepts emoji or MDI (e.g. <em>mdi:pot</em>).</div>' +
+             '<div class="icon-inputs">' +
+               self._textField('Icon (optional)', 'repotted_button_icon',  self._get('repotted_button_icon',  ''), 'e.g. mdi:pot') +
+               self._colorField('Color',          'repotted_button_color', self._get('repotted_button_color', '#c8975a')) +
+             '</div>' +
+           '</div>';
   }
 
   _toggle(label, path, value) {
