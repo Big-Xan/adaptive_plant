@@ -59,6 +59,7 @@ A fully local, event-driven Home Assistant custom integration for tracking and m
 
 ### 📝 Notes (optional)
 - Free-form text field stored per plant
+- Can be enabled or disabled at any time via Configure — no restart required
 
 ### 🖼️ Plant Image (optional)
 - Attach a `/local/` image path to display on dashboard cards. Can be changed via configuration after entry is created. I recommend uploading your plant images to your `/www/` folder.
