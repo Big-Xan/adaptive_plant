@@ -22,10 +22,11 @@ async def async_setup_entry(
         MarkWateredButton(plant, entry),
         SnoozeWateringButton(plant, entry),
         ConfirmHealthButton(plant, entry),
+        MarkFertilizedButton(plant, entry),
     ]
 
-    if plant.enable_fertilization:
-        entities.append(MarkFertilizedButton(plant, entry))
+    if plant.enable_repotting:
+        entities.append(MarkRepottedButton(plant, entry))
 
     async_add_entities(entities)
 
@@ -88,6 +89,10 @@ class MarkFertilizedButton(PlantButtonBase):
         super().__init__(plant, entry)
         self._attr_unique_id = f"{entry.entry_id}_mark_fertilized"
 
+    @property
+    def available(self) -> bool:
+        return self._plant.enable_fertilization
+
     async def async_press(self) -> None:
         await self._plant.mark_fertilized()
 
@@ -104,3 +109,21 @@ class ConfirmHealthButton(PlantButtonBase):
 
     async def async_press(self) -> None:
         await self._plant.confirm_health()
+
+
+class MarkRepottedButton(PlantButtonBase):
+    """Button that records the current date as the last repotting event."""
+
+    _attr_translation_key = "mark_repotted"
+    _attr_icon = "mdi:pot-mix"
+
+    def __init__(self, plant: PlantData, entry: ConfigEntry) -> None:
+        super().__init__(plant, entry)
+        self._attr_unique_id = f"{entry.entry_id}_mark_repotted"
+
+    @property
+    def available(self) -> bool:
+        return self._plant.enable_repotting
+
+    async def async_press(self) -> None:
+        await self._plant.mark_repotted()

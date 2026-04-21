@@ -28,14 +28,13 @@ async def async_setup_entry(
         EarlyWateringCountSensor(plant, entry),
         SnoozeCountSensor(plant, entry),
         CurrentMoistureSensor(plant, entry),
+        LastFertilizedSensor(plant, entry),
+        NextFertilizedSensor(plant, entry),
+        DaysUntilFertilizingSensor(plant, entry),
     ]
 
-    if plant.enable_fertilization:
-        entities += [
-            LastFertilizedSensor(plant, entry),
-            NextFertilizedSensor(plant, entry),
-            DaysUntilFertilizingSensor(plant, entry),
-        ]
+    if plant.enable_repotting:
+        entities.append(LastRepottedSensor(plant, entry))
 
     async_add_entities(entities)
 
@@ -190,6 +189,10 @@ class LastFertilizedSensor(PlantSensorBase):
         self._attr_unique_id = f"{entry.entry_id}_last_fertilized"
 
     @property
+    def available(self) -> bool:
+        return self._plant.enable_fertilization
+
+    @property
     def native_value(self) -> date | None:
         val = self._plant.last_fertilized
         if val:
@@ -209,6 +212,10 @@ class NextFertilizedSensor(PlantSensorBase):
         self._attr_unique_id = f"{entry.entry_id}_next_fertilized"
 
     @property
+    def available(self) -> bool:
+        return self._plant.enable_fertilization
+
+    @property
     def native_value(self) -> date | None:
         val = self._plant.next_fertilized
         if val:
@@ -226,6 +233,10 @@ class DaysUntilFertilizingSensor(PlantSensorBase):
     def __init__(self, plant: PlantData, entry: ConfigEntry) -> None:
         super().__init__(plant, entry)
         self._attr_unique_id = f"{entry.entry_id}_days_until_fertilizing"
+
+    @property
+    def available(self) -> bool:
+        return self._plant.enable_fertilization
 
     @property
     def native_value(self) -> str | None:
@@ -305,3 +316,29 @@ class CurrentMoistureSensor(PlantSensorBase):
             return False
         state = self._plant._hass.states.get(sensor_id)
         return state is not None and state.state not in ("unknown", "unavailable")
+
+
+class LastRepottedSensor(PlantSensorBase):
+    """Date sensor recording the last time this plant was repotted."""
+
+    _attr_device_class = SensorDeviceClass.DATE
+    _attr_translation_key = "last_repotted"
+    _attr_icon = "mdi:pot-mix"
+
+    def __init__(self, plant: PlantData, entry: ConfigEntry) -> None:
+        super().__init__(plant, entry)
+        self._attr_unique_id = f"{entry.entry_id}_last_repotted"
+
+    @property
+    def available(self) -> bool:
+        return self._plant.enable_repotting
+
+    @property
+    def native_value(self) -> date | None:
+        val = self._plant.last_repotted
+        if val:
+            try:
+                return date.fromisoformat(val)
+            except ValueError:
+                return None
+        return None

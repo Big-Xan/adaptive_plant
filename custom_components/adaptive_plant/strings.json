@@ -7,6 +7,7 @@
         "description": "Set up basic care settings for your plant.",
         "data": {
           "plant_name": "Plant name",
+          "latin_name": "Latin name (optional)",
           "area": "Area",
           "label": "Location label (optional)",
           "watering_interval_days": "Watering interval (days)",
@@ -16,6 +17,7 @@
         },
         "data_description": {
           "plant_name": "A friendly name for this plant.",
+          "latin_name": "Optional scientific name for this plant (e.g. Monstera deliciosa).",
           "area": "Assign this plant to a Home Assistant area.",
           "label": "Optional sublabel to group plants within an area (e.g. Left shelf, Window sill). Leave blank if not needed.",
           "watering_interval_days": "How many days between waterings.",
@@ -30,7 +32,9 @@
         "data": {
           "enable_fertilization": "Track fertilization",
           "enable_notes": "Add a notes field",
+          "enable_latin_name": "Add a latin name field",
           "enable_image": "Show a plant image",
+          "enable_repotting": "Track repotting",
           "moisture_sensor": "Moisture sensor (optional)"
         },
         "data_description": {
@@ -71,11 +75,32 @@
           "custom_fertilized_date": "Date last fertilized"
         }
       },
+      "last_repotted": {
+        "title": "Last Repotting",
+        "description": "When did you last repot this plant?",
+        "data": {
+          "initial_last_repotted": "Last repotted"
+        }
+      },
+      "last_repotted_custom": {
+        "title": "Last Repotting - Custom Date",
+        "description": "Enter the date you last repotted this plant.",
+        "data": {
+          "custom_repotted_date": "Date last repotted"
+        }
+      },
       "image": {
         "title": "Plant Image",
         "description": "Enter a path to an image in your /local/ folder (e.g. /local/IMG_4743.jpeg).",
         "data": {
           "image_path": "Image path (/local/...)"
+        }
+      },
+      "latin_name": {
+        "title": "Latin Name",
+        "description": "Enter the scientific name for this plant (e.g. Monstera deliciosa). Leave blank to skip.",
+        "data": {
+          "latin_name": "Latin name"
         }
       },
       "moisture": {
@@ -109,11 +134,19 @@
           "health_prompt_interval_days": "Health prompt interval (days)",
           "fertilization_interval_days": "Fertilization interval (days)",
           "image_path": "Image path (/local/...)",
+          "notes_enabled": "Enable notes",
+          "latin_name": "Latin name",
+          "enable_latin_name": "Enable latin name",
+          "fertilization_enabled": "Enable fertilization tracking",
+          "repotting_enabled": "Enable repotting tracking",
           "moisture_sensor_enabled": "Enable moisture sensor",
           "moisture_sensor": "Moisture sensor"
         },
         "data_description": {
           "label": "Optional sublabel to group plants within an area (e.g. Left shelf, Window sill). Leave blank to remove.",
+          "notes_enabled": "Toggle to enable or disable the notes field for this plant.",
+          "fertilization_enabled": "Toggle to enable or disable fertilization tracking. Previous dates are preserved when re-enabled.",
+          "repotting_enabled": "Toggle to enable or disable repotting tracking. Previous dates are preserved when re-enabled.",
           "moisture_sensor_enabled": "Toggle off to remove the moisture sensor and clear all thresholds.",
           "moisture_sensor": "Select a sensor to drive automatic watering logic."
         }
@@ -125,10 +158,39 @@
           "dry_threshold": "Dry threshold (reschedule watering to today)",
           "wet_threshold": "Wet threshold (auto-mark as watered)"
         }
+      },
+      "fertilized_init": {
+        "title": "Last Fertilization",
+        "description": "When did you last fertilize this plant?",
+        "data": {
+          "initial_last_fertilized": "Last fertilized"
+        }
+      },
+      "fertilized_init_custom": {
+        "title": "Last Fertilization - Custom Date",
+        "description": "Enter the date you last fertilized this plant.",
+        "data": {
+          "custom_fertilized_date": "Date last fertilized"
+        }
+      },
+      "repotted_init": {
+        "title": "Last Repotting",
+        "description": "When did you last repot this plant?",
+        "data": {
+          "initial_last_repotted": "Last repotted"
+        }
+      },
+      "repotted_init_custom": {
+        "title": "Last Repotting - Custom Date",
+        "description": "Enter the date you last repotted this plant.",
+        "data": {
+          "custom_repotted_date": "Date last repotted"
+        }
       }
     },
     "error": {
-      "dry_above_wet": "Dry threshold must be less than wet threshold."
+      "dry_above_wet": "Dry threshold must be less than wet threshold.",
+      "invalid_date": "Please enter a valid date."
     }
   },
   "entity": {
@@ -141,13 +203,15 @@
       "last_fertilized": { "name": "Last fertilized" },
       "next_fertilized": { "name": "Next fertilization" },
       "days_until_fertilizing": { "name": "Days until fertilization" },
-      "current_moisture": { "name": "Soil moisture" }
+      "current_moisture": { "name": "Soil moisture" },
+      "last_repotted": { "name": "Last repotted" }
     },
     "button": {
       "mark_watered": { "name": "Mark watered" },
       "snooze_watering": { "name": "Snooze today's tasks" },
       "mark_fertilized": { "name": "Mark fertilized" },
-      "confirm_health": { "name": "Confirm health" }
+      "confirm_health": { "name": "Confirm health" },
+      "mark_repotted": { "name": "Mark repotted" }
     },
     "number": {
       "watering_interval_days": { "name": "Watering interval" },
@@ -165,7 +229,9 @@
       }
     },
     "text": {
-      "notes": { "name": "Notes" }
+      "notes": { "name": "Notes" },
+      "latin_name": { "name": "Latin name" },
+      "repotted_date_input": { "name": "Repotted on" }
     }
   }
 }
