@@ -231,8 +231,8 @@ condition:
   - condition: template
     value_template: >
       {% set now_str = now().strftime('%H:%M') %}
-      {% set t2 = reminder_time_2 | trim | truncate(5, false, '') %}
-      {% set t3 = reminder_time_3 | trim | truncate(5, false, '') %}
+      {% set t2 = (reminder_time_2 | trim)[:5] %}
+      {% set t3 = (reminder_time_3 | trim)[:5] %}
       {% if trigger.id == 'time_1' %}
         true
       {% elif trigger.id == 'time_check' %}
