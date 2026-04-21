@@ -18,10 +18,10 @@ async def async_setup_entry(
 ) -> None:
     plant: PlantData = hass.data[DOMAIN][entry.entry_id]
 
-    entities: list[PlantNumberBase] = [WateringIntervalNumber(plant, entry)]
-
-    if plant.enable_fertilization:
-        entities.append(FertilizationIntervalNumber(plant, entry))
+    entities: list[PlantNumberBase] = [
+        WateringIntervalNumber(plant, entry),
+        FertilizationIntervalNumber(plant, entry),
+    ]
 
     async_add_entities(entities)
 
@@ -91,6 +91,10 @@ class FertilizationIntervalNumber(PlantNumberBase):
     def __init__(self, plant: PlantData, entry: ConfigEntry) -> None:
         super().__init__(plant, entry)
         self._attr_unique_id = f"{entry.entry_id}_fertilization_interval"
+
+    @property
+    def available(self) -> bool:
+        return self._plant.enable_fertilization
 
     @property
     def native_value(self) -> float:
