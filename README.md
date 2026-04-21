@@ -37,6 +37,16 @@ A fully local, event-driven Home Assistant custom integration for tracking and m
 - Track fertilization on a separate interval
 - Same sensor pattern as watering
 - Snoozing watering also snoozes fertilization if it is due the same day
+- Can be enabled on any plant after setup via Configure — you'll be prompted for the last fertilized date when first enabled
+- When enabling fertilization on an existing plant, set your desired interval via the device page or Configure **after** saving the last fertilized date. Then press **Mark fertilized** once for the new interval to take effect and for Days until fertilization to calculate correctly from that date.
+
+### 🪴 Repotting (optional)
+- Track when a plant was last repotted via the **Last repotted** date sensor
+- **Mark repotted** button stamps today's date as the last repotting event
+- **Repotted on** text field — enter a date in `YYYY-MM-DD` format (e.g. `2026-04-01`) before pressing Mark repotted to record a past date instead of today. The field clears automatically after the button is pressed.
+- Can be enabled on any plant after setup via Configure — you'll be prompted for the last repotted date when first enabled
+
+> **Note:** The **Repotted on** field accepts dates in `YYYY-MM-DD` format only (e.g. `2026-04-01`). Invalid entries are ignored and Mark repotted will fall back to today's date.
 
 ### 💧 Moisture Sensor Integration (optional)
 - Link any existing sensor entity
@@ -63,6 +73,7 @@ A fully local, event-driven Home Assistant custom integration for tracking and m
 - Store the scientific name for each plant
 - Enabled or disabled per plant during setup or via Configure at any time
 - Displayed on the companion card below the plant name (if enabled)
+
 > **Tip:** To remove a latin name after setup, open Configure and toggle Enable latin name off.
 
 ---
@@ -87,12 +98,13 @@ A fully local, event-driven Home Assistant custom integration for tracking and m
 2. Search for **Adaptive Plant**
 3. Follow the setup wizard:
    - Plant name, area, optional label, watering interval, adaptive thresholds
-   - Optional features (fertilization, notes, image, moisture sensor)
+   - Optional features (fertilization, notes, latin name, image, repotting, moisture sensor)
    - Last watered date (Today / Yesterday / Custom / Haven't yet)
-   - Last fertilized date (if enabled)
-   - Image path (if enabled)
-   - Add Latin name (if enabled)
-   - Moisture thresholds (if a sensor was selected)
+   - Last fertilized date (Today / Yesterday / Custom / Haven't yet) *(if fertilization enabled)*
+   - Last repotted date (Today / Yesterday / Custom / Haven't yet) *(if repotting enabled)*
+   - Latin name *(if latin name enabled)*
+   - Image path *(if image enabled)*
+   - Moisture thresholds *(if a sensor was selected)*
 
 To edit any setting after setup, go to **Settings → Devices & Services → Adaptive Plant → Configure**.
 
@@ -121,9 +133,13 @@ Each plant creates a device with the following entities:
 | Days until fertilization | Sensor | *(if fertilization enabled)* |
 | Fertilization interval | Number | *(if fertilization enabled)* |
 | Mark fertilized | Button | *(if fertilization enabled)* |
+| Last repotted | Sensor | *(if repotting enabled)* |
+| Mark repotted | Button | *(if repotting enabled)* Stamps today's date, or the date in the Repotted on field if set |
+| Repotted on | Text | *(if repotting enabled)* Enter a past date in `YYYY-MM-DD` format before pressing Mark repotted |
 | Notes | Text | *(if notes enabled)* |
+| Latin name | Text | *(if latin name enabled)* |
 | Soil moisture | Sensor | Diagnostic — live reading from linked moisture sensor *(if moisture sensor configured)* |
-|Latin name | Text | (if latin name enabled)
+
 ---
 
 ## Adaptive Logic
@@ -134,7 +150,7 @@ If you press **Mark Watered** before the scheduled date, an early watering count
 ### Watering interval extension
 If you press **Snooze today's tasks** during a watering period and then water the plant, a snooze streak counter increments. Once it reaches the configured threshold across consecutive periods, the watering interval increases by 1 day (maximum 365). The streak resets if you water without snoozing.
 
-> **Note:** Snoozing and then watering the same plant on the same day will count that period as both early and snoozed. This is a known edge case and _may_ be addressed in a future release. In the meantime.... don't do that? Why would you do that? 
+> **Note:** Snoozing and then watering the same plant on the same day will count that period as both early and snoozed. This is a known edge case and _may_ be addressed in a future release. In the meantime.... don't do that? Why would you do that?
 
 ---
 
