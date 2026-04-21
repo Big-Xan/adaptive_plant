@@ -628,6 +628,27 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
                     CONF_DRY_THRESHOLD: dry,
                     CONF_WET_THRESHOLD: wet,
                 }
+
+                # ── First-enable detection (same as in async_step_init) ───────
+                # Must run here too — when moisture options are collected first,
+                # async_step_init never reaches the detection block in its else branch.
+                fert_first_enable = (
+                    self._pending_opts.get(CONF_FERTILIZATION_ENABLED) is True
+                    and STATE_LAST_FERTILIZED not in current_opts
+                )
+                repot_first_enable = (
+                    self._pending_opts.get(CONF_REPOTTING_ENABLED) is True
+                    and STATE_LAST_REPOTTED not in current_opts
+                )
+
+                if fert_first_enable or repot_first_enable:
+                    self._pending_opts = merged
+                    self._pending_fert_first = fert_first_enable
+                    self._pending_repot_first = repot_first_enable
+                    if fert_first_enable:
+                        return await self.async_step_fertilized_init()
+                    return await self.async_step_repotted_init()
+
                 return self.async_create_entry(title="", data=merged)
 
         return self.async_show_form(
