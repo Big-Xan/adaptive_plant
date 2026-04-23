@@ -147,9 +147,11 @@ Each plant creates a device with the following entities:
 
 ### Watering interval reduction
 If you press **Mark Watered** before the scheduled date, an early watering counter increments. Once it reaches the configured threshold, the watering interval is reduced by 1 day (minimum 1). The counter resets if you water on time.
+> **Example:** If you notice a plant that has a 7 day watering interval is dry prior to its set watering date (7th day since last watering) -> you water it early repeatedly (marking the watering each time) -> once it hits the threshold you entered on set-up the watering period is decreased by a day.
 
 ### Watering interval extension
-If you press **Snooze today's tasks** during a watering period and then water the plant, a snooze streak counter increments. Once it reaches the configured threshold across consecutive periods, the watering interval increases by 1 day (maximum 365). The streak resets if you water without snoozing.
+If you press **Snooze today's tasks** when a watering is due, a snooze streak counter increments and the task is pushed to tomorrow. Once it the snooze count reaches the configured threshold across consecutive periods, the watering interval increases by 1 day (maximum 365). The streak resets if you water without snoozing.
+> **Example:** If you notice a plant that has a 7 day watering interval is not in need of watering on its due date -> you snooze the task until the soil is adequately dry -> if this pattern repeats across enough consecutive watering periods to hit the configured threshold, the watering interval is extended by a day to better match the plant's actual needs.
 
 > **Note:** Snoozing and then watering the same plant on the same day will count that period as both early and snoozed. This is a known edge case and _may_ be addressed in a future release. In the meantime.... don't do that? Why would you do that?
 
