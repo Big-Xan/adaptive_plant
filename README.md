@@ -178,17 +178,20 @@ This repo includes a companion Lovelace card (`adaptive-plant-card.js`) with a f
 - **Labels** — plants with a label assigned are grouped under a sublabel header within their area, across all tabs
 - **Health ring** — colored ring around each plant avatar indicating health status, configurable per tab
 - **Confirm Health button** — always visible in the Overview expanded detail. Shows a heart icon and reads "Update Due" when a health check-in is overdue. Color configurable.
+- **Repotting** — Mark Repotted button and date input in the expanded detail view on the overview tab, with customizable button color and icon. The button and input can be hidden via the visual editor or `show_repotting` — the last repotted date always remains visible.
+- **Latin / scientific name** — displays in italics below the plant name across all three tabs when enabled on a plant. Font size, color, and vertical padding all configurable.
 - **Transparent background** — option to hide the card background, compatible with frosted glass themes
 - **Pin hold button** — optionally fix the "Hold to complete all" button to the bottom of the card
 - **Full visual editor** — configure everything without writing YAML
+
 
 ### Card Configuration & Visual Editor
 
 The card is fully configurable via the visual editor — no YAML required. The card can be modified via YAML if that is your preference (scroll down).
 
-**Default configuration (no options set):**
+**Default configuration - no options set (all 3 tabs shown for visual reference. They are displayed one at a time by the card.):**
+<img width="2912" height="1467" alt="BIG(8)" src="https://github.com/user-attachments/assets/33488e73-b1f5-45c5-9a81-307ccd949ea1" />
 
-![Adaptive Plant Card default](https://github.com/user-attachments/assets/197cb184-1b00-4dc0-9916-2c4cfced9315)
 ```yaml
 type: custom:adaptive-plant-card
 ```
@@ -206,7 +209,7 @@ health:
   ring: true
   text: false
   colors:
-    Excellent: "#7cb97e"
+    excellent: "#7cb97e"
 icons:
   water: mdi:water
   water_color: "#64b4ff"
@@ -220,45 +223,48 @@ icons:
   water_done_color: "#64b4ff"
 ```
 
+**Visual editor as of v14 — every option is configurable without touching YAML. Customization is virtually endless:**
+<img width="2040" height="2096" alt="BIG(9)" src="https://github.com/user-attachments/assets/1204d1d2-daf3-4c13-8363-88f1aea003df" />
+
+> *Visual editor appears as a vertical scroll - edited together because there are so many config options the vertical image was comically long. Customize away! :)*
+
 **For full YAML configuration reference:**
 ```yaml
 type: custom:adaptive-plant-card
-
 # Layout
 height: 500               # optional — enables internal scroll
 width: 400                # optional
-
 # Tabs
 show_today: true
 show_upcoming: true
 show_overview: true
-
 # Schedule
 upcoming_days: 14         # how many days ahead to show (default: 30)
 overdue_color: '#e05c5c'  # color for overdue chips and indicators
-
 # Card appearance
 show_background: true     # set false for transparent/frosted glass themes
 pin_hold_button: false    # set true to fix hold bar to bottom of card
-
 # Moisture sensor options
 exclude_moisture_from_upcoming: false  # hide moisture-tracked plants from Upcoming tab
 show_moisture_in_overview: false       # show live moisture % instead of watering days in Overview
-
+# Repotting
+show_repotting: true      # set false to hide button & date input (date still shown)
+# Latin / scientific name
+show_latin_name: false    # show italic latin name below plant name in all tabs
+latin_name_size: 11       # optional — font size in px
+latin_name_color: '#888888'  # optional — defaults to --secondary-text-color
+latin_name_padding: 1     # optional — vertical padding in px
 # Overview sort order
 overview_sort: alphabetical   # alphabetical | health | watering
-
 # Label appearance
 label_align: left         # left | center | right
 label_padding: 20         # px offset from the chosen edge
 label_color: '#666666'    # optional — defaults to --secondary-text-color
-
 # Area & label header sizing
 area_header_size: 12      # optional — font size in px for area name headers
 area_header_color: '#888888'  # optional — color for area name headers
 label_header_size: 11     # optional — font size in px for label sub-headers
                           # label_header color is set via label_color above
-
 # Health ring & text
 health:
   ring: true              # show health ring globally (default: true)
@@ -267,13 +273,14 @@ health:
   ring_today: true        # per-tab override (true / false, omit for global default)
   ring_upcoming: true
   ring_overview: true
+  text_today: false       # per-tab override (true / false, omit for global default)
+  text_upcoming: false
   text_overview: true     # text shown on overview by default
   colors:
-    Excellent: '#7cb97e'
-    Good: '#a8cc8a'
-    Poor: '#e6a817'
-    Sick: '#e05c5c'
-
+    excellent: '#7cb97e'
+    good: '#a8cc8a'
+    poor: '#e6a817'
+    sick: '#e05c5c'
 # Icons — use any emoji or MDI icon (e.g. mdi:water)
 icons:
   water: '💧'
@@ -289,6 +296,8 @@ icons:
   health_confirm: 'mdi:cards-heart'       # icon for Confirm Health button
   health_confirm_color: '#aaaaaa'         # color when check-in is not overdue
   health_confirm_overdue_color: '#e05c5c' # color when check-in is overdue
+  repotted_button_icon: 'mdi:pot'         # optional — emoji or MDI; omit for text-only button
+  repotted_button_color: '#c8975a'        # optional — button and input focus ring color
 ```
 
 All options are... they're optional — omit any to use defaults.
