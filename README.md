@@ -163,14 +163,11 @@ This repo includes a companion Lovelace card (`adaptive-plant-card.js`) with a f
 
 ### Card Installation
 
-1. Copy `www/adaptive-plant-card.js` to your HA `config/www/` directory
-2. Go to **Settings → Dashboards → Resources → Add Resource**
-   - URL: `/local/adaptive-plant-card.js`
-   - Type: **JavaScript module**
-3. Hard refresh your browser (Ctrl+Shift+R / Cmd+Shift+R)
-4. Add a new card and search for **Adaptive Plant Card**
+The card is bundled with the integration and registered automatically as a Lovelace resource when the integration loads — no manual installation required. The integration registers a single HTTP endpoint to serve the card file, which is what enables this automatic registration.
 
-> **Tip:** If you update the card and don't see changes, make sure you've cleared your cache.
+Hard refresh your browser (Ctrl+Shift+R / Cmd+Shift+R) after installing or updating.
+
+> **Upgrading from v1.1.0 or earlier?** Previous versions required manually copying `www/adaptive-plant-card.js` to your HA `config/www/` directory and adding it as a resource under **Settings → Dashboards → Resources**. Remove that old resource entry to avoid the card loading twice.
 
 ### Card Features
 
@@ -308,13 +305,17 @@ All options are... they're optional — omit any to use defaults.
 
 ## 📋 Task Reminder Blueprint
 
-A companion blueprint for daily plant task reminders is included in this repo. Sends a single combined notification when any of your plants have watering or fertilization tasks due or overdue — automatically discovering all plants without any manual configuration. Supports up to three daily reminder times, customizable notification text, an optional task count summary (e.g. "4 Waterings and 2 Fertilizations"), and a tap action to open your plant dashboard directly. Optionally restrict notifications to only fire when a person is in a specific zone. Plants can be individually excluded from watering or fertilization reminders. Compatible with the Home Assistant Companion App (iOS and Android).
+A companion blueprint for daily plant task reminders is included with the integration. It is copied automatically into your HA blueprints directory when the integration loads — find it under **Settings → Automations & Scenes → Blueprints** without any manual import needed.
 
-[![Import Blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://raw.githubusercontent.com/Big-Xan/adaptive_plant/main/blueprints/automation/adaptive_plant/plant_task_reminders.yaml)
+Sends a single combined notification when any of your plants have watering or fertilization tasks due or overdue — automatically discovering all plants without any manual configuration. Supports up to three daily reminder times, customizable notification text, an optional task count summary (e.g. "4 Waterings and 2 Fertilizations"), and a tap action to open your plant dashboard directly. Optionally restrict notifications to only fire when a person is in a specific zone. Plants can be individually excluded from watering or fertilization reminders. Compatible with the Home Assistant Companion App (iOS and Android).
+
+> **Upgrading from v1.1.0 or earlier?** The blueprint was previously available at `blueprints/automation/adaptive_plant/plant_task_reminders.yaml` in the repo root and required manual import. It can still be imported manually from that path on those versions. From v1.2.0 onwards it is bundled and copied automatically.
+
+[![Import Blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://raw.githubusercontent.com/Big-Xan/adaptive_plant/main/custom_components/adaptive_plant/blueprints/automation/plant_task_reminders.yaml)
 
 Or manually import via **Settings → Automations & Scenes → Blueprints → Import Blueprint** and paste:
 ```
-https://raw.githubusercontent.com/Big-Xan/adaptive_plant/main/blueprints/automation/adaptive_plant/plant_task_reminders.yaml
+https://raw.githubusercontent.com/Big-Xan/adaptive_plant/main/custom_components/adaptive_plant/blueprints/automation/plant_task_reminders.yaml
 ```
 
 ![Task Reminder Blueprint](https://github.com/user-attachments/assets/a1c65a41-0737-4fd7-a3aa-e71e9ae2b0d5)
@@ -324,8 +325,10 @@ https://raw.githubusercontent.com/Big-Xan/adaptive_plant/main/blueprints/automat
 
 - Fully local — no external API calls, no telemetry, no analytics
 - All state stored in config entries only
-- No HTTP endpoints registered
+- One HTTP endpoint registered to serve the bundled Lovelace card (`/adaptive_plant/adaptive-plant-card.js`) — no other endpoints exposed
 - No shell commands executed
+
+> **Note:** Versions v1.1.0 and earlier registered no HTTP endpoints and required manual card and blueprint installation.
 
 ---
 
