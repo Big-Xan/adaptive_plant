@@ -43,9 +43,13 @@ async def _async_register_frontend(hass: HomeAssistant) -> None:
     """Register the card as a static path and Lovelace resource (once per HA run)."""
     from homeassistant.components.http import StaticPathConfig
 
-    await hass.http.async_register_static_paths(
-        [StaticPathConfig(url_path=_CARD_URL, path=str(_CARD_PATH), cache_headers=False)]
-    )
+    try:
+        await hass.http.async_register_static_paths(
+            [StaticPathConfig(url_path=_CARD_URL, path=str(_CARD_PATH), cache_headers=False)]
+        )
+    except RuntimeError:
+        # Route already registered from a previous setup call — safe to ignore
+        pass
 
     # Auto-register as a Lovelace resource in storage mode.
     # Silently skips if Lovelace is in YAML mode.
@@ -87,14 +91,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
 
     # ── Frontend card + Lovelace resource (once per HA run) ──────────────────
-    if not hass.data[DOMAIN].get("_frontend_registered"):
+    if not hass.data.get(f"{DOMAIN}_frontend_registered"):
         await _async_register_frontend(hass)
-        hass.data[DOMAIN]["_frontend_registered"] = True
+        hass.data[f"{DOMAIN}_frontend_registered"] = True
 
     # ── Blueprints (copy with mtime guard, executor) ─────────────────────────
-    if not hass.data[DOMAIN].get("_blueprints_copied"):
+    if not hass.data.get(f"{DOMAIN}_blueprints_copied"):
         await hass.async_add_executor_job(_copy_blueprints, hass.config.config_dir)
-        hass.data[DOMAIN]["_blueprints_copied"] = True
+        hass.data[f"{DOMAIN}_blueprints_copied"] = True
 
     # ── Seed initial state from setup wizard on first load ───────────────────
     initial_options: dict = dict(entry.options)
