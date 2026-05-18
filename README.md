@@ -86,6 +86,7 @@ A fully local, event-driven Home Assistant custom integration for tracking and m
 2. Add `https://github.com/Big-Xan/adaptive_plant` as an **Integration**
 3. Search for **Adaptive Plant** and install
 4. Restart Home Assistant
+5. After restarting, the companion card and task reminder blueprint are registered automatically — no further steps needed.
 
 ### Manual
 1. Copy the `custom_components/adaptive_plant/` folder into your HA `config/custom_components/` directory
@@ -305,7 +306,7 @@ All options are... they're optional — omit any to use defaults.
 
 ## 📋 Task Reminder Blueprint
 
-A companion blueprint for daily plant task reminders is included with the integration. It is copied automatically into your HA blueprints directory when the integration loads — find it under **Settings → Automations & Scenes → Blueprints** without any manual import needed.
+A companion blueprint for daily plant task reminders is bundled with the integration and copied automatically into your HA blueprints directory when the integration loads — find it under Settings → Automations & Scenes → Blueprints without any manual import needed.
 
 Sends a single combined notification when any of your plants have watering or fertilization tasks due or overdue — automatically discovering all plants without any manual configuration. Supports up to three daily reminder times, customizable notification text, an optional task count summary (e.g. "4 Waterings and 2 Fertilizations"), and a tap action to open your plant dashboard directly. Optionally restrict notifications to only fire when a person is in a specific zone. Plants can be individually excluded from watering or fertilization reminders. Compatible with the Home Assistant Companion App (iOS and Android).
 
@@ -326,9 +327,8 @@ https://raw.githubusercontent.com/Big-Xan/adaptive_plant/main/custom_components/
 - Fully local — no external API calls, no telemetry, no analytics
 - All state stored in config entries only
 - One HTTP endpoint registered to serve the bundled Lovelace card (`/adaptive_plant/adaptive-plant-card.js`) — no other endpoints exposed
-- No shell commands executed
-
 > **Note:** Versions v1.1.0 and earlier registered no HTTP endpoints and required manual card and blueprint installation.
+> - No shell commands executed
 
 ---
 
