@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import logging
+import shutil
 from datetime import date
+from pathlib import Path
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import Event, HomeAssistant
@@ -32,10 +34,67 @@ from .plant import PlantData
 
 _LOGGER = logging.getLogger(__name__)
 
+_CARD_URL = f"/{DOMAIN}/adaptive-plant-card.js"
+_CARD_PATH = Path(__file__).parent / "frontend" / "adaptive-plant-card.js"
+_BLUEPRINTS_SRC = Path(__file__).parent / "blueprints" / "automation"
+
+
+async def _async_register_frontend(hass: HomeAssistant) -> None:
+    """Register the card as a static path and Lovelace resource (once per HA run)."""
+    from homeassistant.components.http import StaticPathConfig
+
+    await hass.http.async_register_static_paths(
+        [StaticPathConfig(url_path=_CARD_URL, path=str(_CARD_PATH), cache_headers=False)]
+    )
+
+    # Auto-register as a Lovelace resource in storage mode.
+    # Silently skips if Lovelace is in YAML mode.
+    try:
+        lovelace = hass.data.get("lovelace")
+        if lovelace and hasattr(lovelace, "resources"):
+            resources = lovelace.resources
+            await resources.async_load()
+            already_registered = any(
+                _CARD_URL in (item.get("url") or "")
+                for item in resources.async_items()
+            )
+            if not already_registered:
+                await resources.async_create_item(
+                    {"res_type": "module", "url": _CARD_URL}
+                )
+    except Exception:  # noqa: BLE001
+        _LOGGER.debug(
+            "Lovelace resource auto-registration skipped "
+            "(YAML mode or Lovelace not yet loaded)"
+        )
+
+
+def _copy_blueprints(config_path: str) -> None:
+    """Copy bundled blueprints into the HA blueprints directory (executor job)."""
+    dst_dir = Path(config_path) / "blueprints" / "automation" / DOMAIN
+    dst_dir.mkdir(parents=True, exist_ok=True)
+    for src_file in _BLUEPRINTS_SRC.glob("*.yaml"):
+        dst_file = dst_dir / src_file.name
+        # mtime guard — skip if destination is newer (preserves user edits)
+        if dst_file.exists() and dst_file.stat().st_mtime >= src_file.stat().st_mtime:
+            continue
+        shutil.copy2(src_file, dst_file)
+        _LOGGER.debug("Copied blueprint %s → %s", src_file.name, dst_file)
+
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up an Adaptive Plant config entry."""
     hass.data.setdefault(DOMAIN, {})
+
+    # ── Frontend card + Lovelace resource (once per HA run) ──────────────────
+    if not hass.data[DOMAIN].get("_frontend_registered"):
+        await _async_register_frontend(hass)
+        hass.data[DOMAIN]["_frontend_registered"] = True
+
+    # ── Blueprints (copy with mtime guard, executor) ─────────────────────────
+    if not hass.data[DOMAIN].get("_blueprints_copied"):
+        await hass.async_add_executor_job(_copy_blueprints, hass.config.config_dir)
+        hass.data[DOMAIN]["_blueprints_copied"] = True
 
     # ── Seed initial state from setup wizard on first load ───────────────────
     initial_options: dict = dict(entry.options)
@@ -57,26 +116,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         initial_options[STATE_NEXT_FERTILIZED] = next_fertilized
         seeded = True
 
-    # Seed last_repotted from setup wizard on first load
     resolved_last_repotted = entry.data.get("_resolved_last_repotted")
     if resolved_last_repotted and STATE_LAST_REPOTTED not in initial_options:
         initial_options[STATE_LAST_REPOTTED] = resolved_last_repotted
         seeded = True
 
-    # Seed watering interval from data into options if not already there
     if OPT_WATERING_INTERVAL not in initial_options and OPT_WATERING_INTERVAL in entry.data:
         initial_options[OPT_WATERING_INTERVAL] = entry.data[OPT_WATERING_INTERVAL]
         seeded = True
 
-    # Seed health_last_updated on first load so fresh plants don't immediately
-    # trigger a health reminder notification on their first daily rollover.
     if STATE_HEALTH_LAST_UPDATED not in initial_options:
         initial_options[STATE_HEALTH_LAST_UPDATED] = date.today().isoformat()
         seeded = True
 
-    # Seed STATE_HEALTH so the HealthSelect entity always reads a real health
-    # string from options. Also corrects any existing entry where a non-health
-    # value (e.g. a timestamp) was previously stored under this key.
     current_health = initial_options.get(STATE_HEALTH)
     if current_health not in HEALTH_OPTIONS:
         initial_options[STATE_HEALTH] = DEFAULT_HEALTH
@@ -88,15 +140,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     plant = PlantData(hass, entry)
     hass.data[DOMAIN][entry.entry_id] = plant
 
-    # Forward to all entity platforms
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     # ── Startup moisture check ───────────────────────────────────────────────
-    # Deferred as a task so it doesn't block entry setup. For moisture sensor
-    # plants that were already overdue before 1.0.4 was installed, pushes
-    # next_watering forward by 1 day if soil is above the dry threshold.
-    # Skips gracefully if the sensor hasn't reported yet — nightly rollover
-    # at 00:05 will catch it.
     async def _startup_moisture_check() -> None:
         await plant.startup_moisture_check()
 
@@ -106,9 +152,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     area_id: str | None = entry.data.get(CONF_AREA)
     if area_id:
         dev_reg = dr.async_get(hass)
-        device = dev_reg.async_get_device(
-            identifiers={(DOMAIN, entry.entry_id)}
-        )
+        device = dev_reg.async_get_device(identifiers={(DOMAIN, entry.entry_id)})
         if device:
             dev_reg.async_update_device(device.id, area_id=area_id)
 
@@ -121,13 +165,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
 
     # ── Moisture sensor listener ─────────────────────────────────────────────
-    # Wrapped in a helper so it can be re-called when options change (e.g. the
-    # user adds, changes, or removes a moisture sensor via the options flow).
     _moisture_unsub = None
 
     def _register_moisture_listener() -> None:
         nonlocal _moisture_unsub
-        # Tear down the previous listener if one exists
         if _moisture_unsub is not None:
             _moisture_unsub()
             _moisture_unsub = None
@@ -148,15 +189,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _register_moisture_listener()
 
     # ── Options update listener ──────────────────────────────────────────────
-    # Re-registers the moisture listener whenever the user saves new options,
-    # so adding/changing/removing a sensor takes effect without a full restart.
     async def _handle_options_update(hass: HomeAssistant, entry: ConfigEntry) -> None:
         _register_moisture_listener()
         plant._notify_listeners()
 
     entry.async_on_unload(entry.add_update_listener(_handle_options_update))
 
-    # Ensure the moisture unsub is cleaned up on unload
     def _unsub_moisture() -> None:
         if _moisture_unsub is not None:
             _moisture_unsub()
