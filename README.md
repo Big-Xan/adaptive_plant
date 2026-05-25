@@ -62,7 +62,11 @@ A fully local, event-driven Home Assistant custom integration for tracking and m
 - Can be enabled or disabled at any time via Configure — no restart required
 
 ### 🖼️ Plant Image (optional)
-- Attach a `/local/` image path to display on dashboard cards. Can be changed via configuration after entry is created. I recommend uploading your plant images to your `/www/` folder.
+- Attach a `/local/` image path to display on dashboard cards. Can be changed via configuration after entry is created. I recommend creating a folder titled 'adaptive_plant' in your `/www/` folder and uploading your plant images there.
+> **Example image pathway (w/ folder created) for card config:**  `/local/adaptive_plant/monstera.png`
+
+> **Example image pathway (without folder) for card config:**  `/local/monstera.png` 
+
 
 ### 🏠 Area & Label Support
 - Assign each plant to a Home Assistant area during setup
