@@ -17,6 +17,7 @@ A fully local, event-driven Home Assistant custom integration for tracking and m
 - [Adaptive Logic](#adaptive-logic)
 - [Companion Lovelace Card](#-companion-lovelace-card)
 - [Task Reminder Blueprint](#-task-reminder-blueprint)
+- [Frequently Asked Questions](#-faq)
 ---
 
 ## Features
@@ -38,7 +39,8 @@ A fully local, event-driven Home Assistant custom integration for tracking and m
 - Same sensor pattern as watering
 - Snoozing watering also snoozes fertilization if it is due the same day
 - Can be enabled on any plant after setup via Configure — you'll be prompted for the last fertilized date when first enabled
-- When enabling fertilization on an existing plant, set your desired interval via the device page or Configure **after** saving the last fertilized date. Then press **Mark fertilized** once for the new interval to take effect and for Days until fertilization to calculate correctly from that date.
+- When enabling fertilization on an existing plant via Configure, reload the
+entry/plant afterwards (**Settings → Devices & Services → Adaptive Plant →⋮ → Reload**) to create the fertilization entities. Once reloaded, open Configure again to set your desired interval — the Fertilization interval field appears once fertilization is active. Then press **Mark fertilized** once for the interval to take effect and for Days until fertilization to calculate correctly.
 
 ### 🪴 Repotting (optional)
 - Track when a plant was last repotted via the **Last repotted** date sensor
@@ -227,7 +229,7 @@ icons:
   water_done_color: "#64b4ff"
 ```
 
-**Visual editor as of v14 — every option is configurable without touching YAML. Customization is virtually endless:**
+**Visual editor as of v15 — every option is configurable without touching YAML. Customization is virtually endless:**
 <img width="2040" height="2096" alt="BIG(9)" src="https://github.com/user-attachments/assets/1204d1d2-daf3-4c13-8363-88f1aea003df" />
 
 > *Visual editor appears as a vertical scroll - edited together because there are so many config options the vertical image was comically long. Customize away! :)*
@@ -325,6 +327,88 @@ https://raw.githubusercontent.com/Big-Xan/adaptive_plant/main/custom_components/
 
 ![Task Reminder Blueprint](https://github.com/user-attachments/assets/a1c65a41-0737-4fd7-a3aa-e71e9ae2b0d5)
 
+---
+
+## ❓ FAQ
+
+**Does Adaptive Plant tell me how to take care of my plants?**
+
+No — and that's by design. Adaptive Plant tracks and adapts to *your*
+care routine rather than prescribing one. It learns your plant's actual
+needs over time based on how you interact with it ("oh the soil is stil wet I need to snooze it again.", but it won't tell you
+that a Monstera wants indirect light or that succulents need to dry out
+completely between waterings.
+
+A plant's watering needs are influenced by a wide range of factors —
+potting mix, pot size, pot type (terracotta vs. plastic vs. ceramic),
+distance from the window, window direction, season, humidity, and more.
+For species-specific guidance, the best starting points are:
+
+- Houseplant subreddits (r/houseplants, r/plantclinic, and many
+  species-specific communities)
+- A targeted Google search for your plant's latin name
+- AI assistants — just be sure to include context like potting mix,
+  pot size and type, distance from window, and window direction for
+  the most accurate advice
+
+Once you have a rough watering cadence, set it as your starting interval
+and let Adaptive Plant tune it from there.
+
+---
+
+**How do I get the tablet layout shown in the screenshot?**
+
+Three separate cards placed side by side, each showing only one tab
+(Today, Upcoming, and Overview respectively), sized to fit the tablet
+screen exactly. To replicate it:
+
+- Add three Adaptive Plant cards to a horizontal stack or grid layout
+- On each card, disable the two tabs you don't want:
+```yaml
+  # Card 1 — Today only
+  type: custom:adaptive-plant-card
+  show_upcoming: false
+  show_overview: false
+
+  # Card 2 — Upcoming only
+  type: custom:adaptive-plant-card
+  show_today: false
+  show_overview: false
+
+  # Card 3 — Overview only
+  type: custom:adaptive-plant-card
+  show_today: false
+  show_upcoming: false
+```
+- Set a `height` on each card to fill your screen and adjust widths
+  to taste
+
+---
+
+**Can I use this without the companion card?**
+
+Yes — the card is entirely optional. Every entity the integration creates
+is a standard HA entity and works with any dashboard setup. You can use
+generic HA cards like `entity`, `button`, or `history-graph` — whatever
+fits your existing dashboard. The companion card just gives you a
+purpose-built view with all your plants in one place, adaptive logic
+visualized, and one-tap actions. The integration has no dependency on
+the card.
+
+---
+
+**What happens if I delete a plant and re-add it?**
+
+All state is stored in the config entry — last watered date, next
+watering, fertilization dates, repotting history, notes, health, and the
+adapted watering interval. Deleting the entry permanently deletes all of
+that. Re-adding the plant starts completely fresh.
+
+If you need to change a setting, always use **Configure** rather than
+deleting and re-adding — almost everything is editable after setup
+without losing any data.
+
+---
 
 ## Privacy & Security
 
