@@ -1,4 +1,4 @@
-// Adaptive Plant Card v14
+// Adaptive Plant Card v15
 
 class AdaptivePlantCard extends HTMLElement {
   constructor() {
@@ -11,6 +11,7 @@ class AdaptivePlantCard extends HTMLElement {
     this._holding      = false;
     this._initialized  = false;
     this._selectOpen   = false;
+    this._notesEditing = false;
   }
 
   static getConfigElement() { return document.createElement('adaptive-plant-card-editor'); }
@@ -98,7 +99,7 @@ class AdaptivePlantCard extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
     if (!this._initialized) { this._bootstrapShell(); this._initialized = true; }
-    if (!this._holding && !this._selectOpen) this._updateContent();
+    if (!this._holding && !this._selectOpen && !this._notesEditing) this._updateContent();
   }
 
   _showRing(tab) { var o = this._health['ring_' + tab]; return o !== null ? o : this._health.ring; }
@@ -262,11 +263,16 @@ class AdaptivePlantCard extends HTMLElement {
         self._updateContent();
       });
     });
+    root.querySelectorAll('.notes-input').forEach(function(el) {
+      el.addEventListener('focus', function() { self._notesEditing = true; });
+      el.addEventListener('blur',  function() { self._notesEditing = false; });
+    });
     root.querySelectorAll('[data-notes-entity]').forEach(function(el) {
       el.addEventListener('click', function(e) {
         e.stopPropagation();
         var input = root.querySelector('#notes-input-' + el.dataset.plantId);
         if (input) self._setValue(el.dataset.notesEntity, input.value);
+        self._notesEditing = false;
         self._editingNotes = null;
         self._updateContent();
       });
@@ -274,6 +280,7 @@ class AdaptivePlantCard extends HTMLElement {
     root.querySelectorAll('.notes-cancel').forEach(function(el) {
       el.addEventListener('click', function(e) {
         e.stopPropagation();
+        self._notesEditing = false;
         self._editingNotes = null;
         self._updateContent();
       });
