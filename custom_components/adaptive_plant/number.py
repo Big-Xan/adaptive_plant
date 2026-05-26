@@ -20,8 +20,10 @@ async def async_setup_entry(
 
     entities: list[PlantNumberBase] = [
         WateringIntervalNumber(plant, entry),
-        FertilizationIntervalNumber(plant, entry),
     ]
+
+    if plant.enable_fertilization:
+        entities.append(FertilizationIntervalNumber(plant, entry))
 
     async_add_entities(entities)
 
