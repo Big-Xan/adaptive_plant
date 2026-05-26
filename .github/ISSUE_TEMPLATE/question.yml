@@ -1,0 +1,65 @@
+name: Question / Support
+description: Need help with setup or configuration? Ask here.
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Happy to help. Before asking, it's worth checking:
+        - The [README](https://github.com/Big-Xan/adaptive_plant/blob/main/README.md) — setup, configuration, and FAQ are all covered there
+        - Existing issues — someone may have had the same question
+
+  - type: input
+    id: integration_version
+    attributes:
+      label: Adaptive Plant version
+      placeholder: e.g. 1.2.0
+    validations:
+      required: true
+
+  - type: input
+    id: ha_version
+    attributes:
+      label: Home Assistant version
+      placeholder: e.g. 2025.5.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: What is your question about?
+      options:
+        - Installation / HACS
+        - Setup wizard
+        - Configure / options after setup
+        - Watering / adaptive logic
+        - Fertilization
+        - Repotting
+        - Health tracking
+        - Moisture sensor
+        - Card / UI
+        - Blueprint / notifications
+        - Entities
+        - Something else
+    validations:
+      required: true
+
+  - type: textarea
+    id: question
+    attributes:
+      label: What do you need help with?
+      description: Describe what you're trying to do and what's unclear or not working as you expect.
+    validations:
+      required: true
+
+  - type: textarea
+    id: tried
+    attributes:
+      label: What have you already tried?
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Any other context?
+      description: Screenshots, configuration details, or anything else that might help.
