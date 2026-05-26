@@ -22,8 +22,10 @@ async def async_setup_entry(
         MarkWateredButton(plant, entry),
         SnoozeWateringButton(plant, entry),
         ConfirmHealthButton(plant, entry),
-        MarkFertilizedButton(plant, entry),
     ]
+
+    if plant.enable_fertilization:
+        entities.append(MarkFertilizedButton(plant, entry))
 
     if plant.enable_repotting:
         entities.append(MarkRepottedButton(plant, entry))
