@@ -28,10 +28,14 @@ async def async_setup_entry(
         EarlyWateringCountSensor(plant, entry),
         SnoozeCountSensor(plant, entry),
         CurrentMoistureSensor(plant, entry),
-        LastFertilizedSensor(plant, entry),
-        NextFertilizedSensor(plant, entry),
-        DaysUntilFertilizingSensor(plant, entry),
     ]
+
+    if plant.enable_fertilization:
+        entities.extend([
+            LastFertilizedSensor(plant, entry),
+            NextFertilizedSensor(plant, entry),
+            DaysUntilFertilizingSensor(plant, entry),
+        ])
 
     if plant.enable_repotting:
         entities.append(LastRepottedSensor(plant, entry))
