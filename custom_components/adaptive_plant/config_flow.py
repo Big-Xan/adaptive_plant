@@ -425,6 +425,9 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
         # Flags set when a first-enable sub-flow is in progress
         self._pending_fert_first: bool = False
         self._pending_repot_first: bool = False
+        # True when the user submitted a blank or "null" label in step 1 —
+        # carried so the moisture-options step can remove the stored label.
+        self._pending_clear_label: bool = False
 
     async def async_step_init(self, user_input: dict | None = None) -> FlowResult:
         errors: dict[str, str] = {}
@@ -432,15 +435,23 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
         current_opts = entry.options
 
         if user_input is not None:
+            # Detect label-clear intent up front (blank, whitespace-only, or
+            # the literal word "null"). The cleanup loop further down only
+            # catches blanks AND only runs on the no-moisture branch, so we
+            # need to capture intent here and apply it explicitly to `merged`
+            # in both branches.
+            raw_label = user_input.get(CONF_LABEL, "")
+            label_stripped = raw_label.strip() if isinstance(raw_label, str) else ""
+            clear_label = (not label_stripped) or label_stripped.lower() == "null"
+
             cleaned = {k: v for k, v in user_input.items() if v not in (None, "")}
 
-            # Normalise label
-            if CONF_LABEL in cleaned:
-                lv = cleaned[CONF_LABEL].strip()
-                if not lv or lv.lower() == "null":
-                    del cleaned[CONF_LABEL]
-                else:
-                    cleaned[CONF_LABEL] = lv
+            # Normalise label: drop from `cleaned` unconditionally, then re-add
+            # the stripped value only if the user didn't intend to clear it.
+            # `merged` cleanup below handles removing any existing stored value.
+            cleaned.pop(CONF_LABEL, None)
+            if not clear_label:
+                cleaned[CONF_LABEL] = label_stripped
 
             # Notes enabled toggle — always write explicitly so falsy value persists
             cleaned[CONF_NOTES_ENABLED] = bool(user_input.get(CONF_NOTES_ENABLED, False))
@@ -462,6 +473,15 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
                 # Toggle off — remove stored latin name
                 cleaned.pop(CONF_LATIN_NAME, None)
 
+            # Image path — handle the text field when image is enabled.
+            # Empty string is written as a tombstone (mirroring CONF_LABEL and
+            # CONF_LATIN_NAME) so the PlantData.image_path property's fallback
+            # to entry.data doesn't resurface a stale value set during the
+            # original setup wizard.
+            if entry.data.get(CONF_ENABLE_IMAGE):
+                raw_image = user_input.get(CONF_IMAGE_PATH, "")
+                cleaned[CONF_IMAGE_PATH] = raw_image.strip() if raw_image else ""
+
             # Handle moisture sensor selection.
             # The toggle is the authoritative clear mechanism — if it's off we
             # strip the sensor and thresholds regardless of the picker value,
@@ -475,15 +495,39 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
                 self._pending_moisture_sensor = moisture_raw
                 # Carry non-moisture fields forward so they're saved after thresholds
                 self._pending_opts = cleaned
+                # Carry the clear-label intent forward — step 2's merge would
+                # otherwise pull the stale value back in from current_opts.
+                self._pending_clear_label = clear_label
                 return await self.async_step_moisture_options()
             else:
                 # Sensor cleared — strip moisture-related keys from options
                 merged = {**current_opts, **cleaned}
                 for key in (CONF_MOISTURE_SENSOR, CONF_DRY_THRESHOLD, CONF_WET_THRESHOLD):
                     merged.pop(key, None)
+                # Explicit label clear — write an empty-string tombstone rather
+                # than popping the key. The PlantData.label property falls
+                # back to entry.data when CONF_LABEL is missing from options,
+                # so a pop leaves a stale value from setup visible. An empty
+                # string in options is treated as "cleared" by the property
+                # and shadows the entry.data fallback.
+                if clear_label:
+                    merged[CONF_LABEL] = ""
                 # Also clear blanked fields — but skip keys we've already
-                # handled explicitly above (boolean toggles that are legitimately false)
-                _skip_clear = {CONF_NOTES_ENABLED, CONF_ENABLE_LATIN_NAME, CONF_FERTILIZATION_ENABLED, CONF_REPOTTING_ENABLED}
+                # handled explicitly above. Tombstone keys (CONF_LABEL,
+                # CONF_LATIN_NAME, CONF_IMAGE_PATH) are included because their
+                # empty-string tombstones written earlier are intentional —
+                # the loop would otherwise treat "" as a blank and delete
+                # them, falling back to stale entry.data values from the
+                # original setup wizard.
+                _skip_clear = {
+                    CONF_LABEL,
+                    CONF_LATIN_NAME,
+                    CONF_IMAGE_PATH,
+                    CONF_NOTES_ENABLED,
+                    CONF_ENABLE_LATIN_NAME,
+                    CONF_FERTILIZATION_ENABLED,
+                    CONF_REPOTTING_ENABLED,
+                }
                 for k, v in user_input.items():
                     if k not in _skip_clear and v in (None, "") and k in merged:
                         del merged[k]
@@ -522,9 +566,10 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
         )
 
         schema_fields: dict = {
-            vol.Optional(CONF_LABEL, default=defaults.get(CONF_LABEL, "")): selector.selector(
-                {"text": {}}
-            ),
+            vol.Optional(
+                CONF_LABEL,
+                description={"suggested_value": defaults.get(CONF_LABEL, "")},
+            ): selector.selector({"text": {}}),
             vol.Required(OPT_WATERING_INTERVAL, default=defaults.get(OPT_WATERING_INTERVAL, DEFAULT_WATERING_INTERVAL)): selector.selector(
                 {"number": {"min": 1, "max": 365, "mode": "box", "unit_of_measurement": "days"}}
             ),
@@ -540,9 +585,12 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
         }
 
         if entry.data.get(CONF_ENABLE_IMAGE):
-            schema_fields[vol.Optional(CONF_IMAGE_PATH, default=defaults.get(CONF_IMAGE_PATH, ""))] = selector.selector(
-                {"text": {}}
-            )
+            schema_fields[
+                vol.Optional(
+                    CONF_IMAGE_PATH,
+                    description={"suggested_value": defaults.get(CONF_IMAGE_PATH, "")},
+                )
+            ] = selector.selector({"text": {}})
 
         # ── Toggles — grouped together at the bottom ─────────────────────────
         # Notes toggle — always shown, options override takes priority over entry.data
@@ -584,10 +632,17 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
             {"boolean": {}}
         )
         if latin_currently_enabled:
-            current_latin = current_opts.get(CONF_LATIN_NAME) or entry.data.get(CONF_LATIN_NAME, "")
-            schema_fields[vol.Optional(CONF_LATIN_NAME, default=current_latin)] = selector.selector(
-                {"text": {}}
-            )
+            # Use the same `defaults = {**entry.data, **current_opts}` lookup
+            # pattern as CONF_LABEL and CONF_IMAGE_PATH so an empty-string
+            # tombstone in options correctly shadows the entry.data value
+            # instead of short-circuiting through an `or` fallback.
+            current_latin = defaults.get(CONF_LATIN_NAME, "")
+            schema_fields[
+                vol.Optional(
+                    CONF_LATIN_NAME,
+                    description={"suggested_value": current_latin},
+                )
+            ] = selector.selector({"text": {}})
 
         # Moisture sensor toggle + picker — always shown
         has_moisture = bool(current_moisture)
@@ -628,6 +683,13 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
                     CONF_DRY_THRESHOLD: dry,
                     CONF_WET_THRESHOLD: wet,
                 }
+
+                # Apply label clear carried from step 1 — write an empty-string
+                # tombstone rather than popping, so the PlantData.label
+                # property's fallback to entry.data doesn't surface a stale
+                # value set during the original setup wizard.
+                if self._pending_clear_label:
+                    merged[CONF_LABEL] = ""
 
                 # ── First-enable detection (same as in async_step_init) ───────
                 # Must run here too — when moisture options are collected first,
