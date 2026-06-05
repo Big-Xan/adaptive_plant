@@ -196,13 +196,15 @@ Hard refresh your browser (Ctrl+Shift+R / Cmd+Shift+R) after installing or updat
 The card is fully configurable via the visual editor — no YAML required. The card can be modified via YAML if that is your preference (scroll down).
 
 **Default configuration - no options set (all 3 tabs shown for visual reference. They are displayed one at a time by the card.):**
-<img width="2912" height="1467" alt="BIG(8)" src="https://github.com/user-attachments/assets/33488e73-b1f5-45c5-9a81-307ccd949ea1" />
+<img width="2912" height="1768" alt="BIG(21)" src="https://github.com/user-attachments/assets/860cf243-4a54-4e28-babe-01d823e238d5" />
+
+
 
 ```yaml
 type: custom:adaptive-plant-card
 ```
 
-**Using native HA mdi icons, centered in-room labels with color changed to gold, height max set with mark all tasks completed button pinned to the bottom of the card so it's always in the same place:**
+OUTDATED WILL REPLACE - THERE ARE MORE OPTIONS. DEFAULTS ARE NOW MDI ICONS **Using native HA mdi icons, centered in-room labels with color changed to gold, height max set with mark all tasks completed button pinned to the bottom of the card so it's always in the same place:**
 
 ![Adaptive Plant Card with MDI icons](https://github.com/user-attachments/assets/27e1bb06-9ece-4d09-9fa4-999f80cbdd84)
 ```yaml
@@ -229,8 +231,11 @@ icons:
   water_done_color: "#64b4ff"
 ```
 
-**Visual editor as of v15 — every option is configurable without touching YAML. Customization is virtually endless:**
-<img width="2040" height="2096" alt="BIG(9)" src="https://github.com/user-attachments/assets/1204d1d2-daf3-4c13-8363-88f1aea003df" />
+**Visual editor as of v17 — every option is configurable without touching YAML. Customization is virtually endless:**
+<img width="1504" height="2912" alt="BIG(20)" src="https://github.com/user-attachments/assets/beef0a18-5618-46ae-aea2-09907dcf7cd0" />
+
+
+
 
 > *Visual editor appears as a vertical scroll - edited together because there are so many config options the vertical image was comically long. Customize away! :)*
 
@@ -249,6 +254,8 @@ upcoming_days: 14         # how many days ahead to show (default: 30)
 overdue_color: '#e05c5c'  # color for overdue chips and indicators
 # Card appearance
 show_background: true     # set false for transparent/frosted glass themes
+card_background_color: #1c1c1e # optional — hex value shown represents the default
+tab_active_color: #7cb97e # optional — hex value shown represents the default
 pin_hold_button: false    # set true to fix hold bar to bottom of card
 # Moisture sensor options
 exclude_moisture_from_upcoming: false  # hide moisture-tracked plants from Upcoming tab
@@ -289,15 +296,15 @@ health:
     sick: '#e05c5c'
 # Icons — use any emoji or MDI icon (e.g. mdi:water)
 icons:
-  water: '💧'
+  water: mdi:water
   water_color: '#64b4ff'
-  fertilize: '🌸'
+  fertilize: mdi:flower
   fertilize_color: '#7cb97e'
-  snooze: '🔔'
+  snooze: mdi:bell-sleep
   snooze_color: '#aaaaaa'
-  fertilize_done: '✅'
+  fertilize_done: mdi:check
   fertilize_done_color: '#7cb97e'
-  water_done: '✔'
+  water_done: mdi:check
   water_done_color: '#64b4ff'
   health_confirm: 'mdi:cards-heart'       # icon for Confirm Health button
   health_confirm_color: '#aaaaaa'         # color when check-in is not overdue
