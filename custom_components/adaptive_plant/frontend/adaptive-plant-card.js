@@ -1,17 +1,18 @@
-// Adaptive Plant Card v15
+// Adaptive Plant Card v17
 
 class AdaptivePlantCard extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
-    this._tab          = null;
-    this._expanded     = null;
-    this._editingNotes = null;
-    this._holdRaf      = null;
-    this._holding      = false;
-    this._initialized  = false;
-    this._selectOpen   = false;
-    this._notesEditing = false;
+    this._tab            = null;
+    this._expanded       = null;
+    this._editingNotes   = null;
+    this._holdRaf        = null;
+    this._holding        = false;
+    this._initialized    = false;
+    this._selectOpen     = false;
+    this._notesEditing   = false;
+    this._plantEntityIds = null;   // cached list of adaptive_plant entity ids (perf)
   }
 
   static getConfigElement() { return document.createElement('adaptive-plant-card-editor'); }
@@ -24,7 +25,11 @@ class AdaptivePlantCard extends HTMLElement {
     this._showOverview   = config.show_overview   !== false;
     this._overdueColor   = config.overdue_color   || '#e05c5c';
     this._upcomingDays   = config.upcoming_days   || 30;
-    this._showBackground = config.show_background !== false;
+    this._showBackground     = config.show_background !== false;
+    this._cardBackgroundColor = (config.card_background_color !== undefined && config.card_background_color !== null && config.card_background_color !== '')
+                                  ? config.card_background_color : null;
+    this._tabActiveColor      = (config.tab_active_color !== undefined && config.tab_active_color !== null && config.tab_active_color !== '')
+                                  ? config.tab_active_color : '#7cb97e';
     this._pinHoldButton  = config.pin_hold_button === true;
     this._labelAlign     = config.label_align     || 'left';
     this._labelPadding   = (config.label_padding !== undefined && config.label_padding !== null && config.label_padding !== '')
@@ -52,15 +57,15 @@ class AdaptivePlantCard extends HTMLElement {
 
     var ic = config.icons || {};
     this._icons = {
-      water:                        ic.water                        || '💧',
+      water:                        ic.water                        || 'mdi:water',
       water_color:                  ic.water_color                  || '#64b4ff',
-      fertilize:                    ic.fertilize                    || '🌸',
+      fertilize:                    ic.fertilize                    || 'mdi:flower',
       fertilize_color:              ic.fertilize_color              || '#7cb97e',
-      snooze:                       ic.snooze                       || '🔔',
+      snooze:                       ic.snooze                       || 'mdi:bell-sleep',
       snooze_color:                 ic.snooze_color                 || '#aaaaaa',
-      fertilize_done:               ic.fertilize_done               || '✅',
+      fertilize_done:               ic.fertilize_done               || 'mdi:check',
       fertilize_done_color:         ic.fertilize_done_color         || '#7cb97e',
-      water_done:                   ic.water_done                   || '✔',
+      water_done:                   ic.water_done                   || 'mdi:check',
       water_done_color:             ic.water_done_color             || '#64b4ff',
       health_confirm:               ic.health_confirm               || 'mdi:cards-heart',
       health_confirm_color:         ic.health_confirm_color         || '#aaaaaa',
@@ -97,9 +102,57 @@ class AdaptivePlantCard extends HTMLElement {
   getCardSize() { return 5; }
 
   set hass(hass) {
+    var prevHass = this._hass;
     this._hass = hass;
-    if (!this._initialized) { this._bootstrapShell(); this._initialized = true; }
-    if (!this._holding && !this._selectOpen && !this._notesEditing) this._updateContent();
+    if (!this._initialized) {
+      this._bootstrapShell();
+      this._initialized = true;
+      this._refreshPlantEntityCache();
+      this._updateContent();
+      return;
+    }
+    if (this._holding || this._selectOpen || this._notesEditing) return;
+    if (this._shouldRender(prevHass, hass)) this._updateContent();
+  }
+
+  // ── Render-skip optimisation ─────────────────────────────────────────────
+  // HA calls `set hass` on every state change anywhere in the system. We
+  // cache the list of adaptive_plant entity ids and only re-render when
+  // one of those entities (or the device/area registry) has actually
+  // changed. HA reuses state objects when nothing changes, so identity
+  // comparison via !== is reliable and fast.
+
+  _refreshPlantEntityCache() {
+    var hass = this._hass;
+    if (!hass || !hass.entities) { this._plantEntityIds = []; return; }
+    var ids = [];
+    var entities = hass.entities;
+    Object.keys(entities).forEach(function(id) {
+      if (entities[id].platform === 'adaptive_plant') ids.push(id);
+    });
+    this._plantEntityIds = ids;
+  }
+
+  _shouldRender(prevHass, hass) {
+    if (!prevHass) return true;
+    // Entity registry changed → plant added/removed/registered. Refresh & render.
+    if (prevHass.entities !== hass.entities) {
+      this._refreshPlantEntityCache();
+      return true;
+    }
+    // Device or area metadata changed (rename, area move, etc.)
+    if (prevHass.devices !== hass.devices) return true;
+    if (prevHass.areas   !== hass.areas)   return true;
+    // Watched-state comparison: re-render only if a plant entity's state
+    // object changed. The integration's CurrentMoistureSensor mirrors the
+    // upstream moisture sensor, so moisture updates also flow through here.
+    var ids = this._plantEntityIds || [];
+    var prevStates = prevHass.states || {};
+    var newStates  = hass.states     || {};
+    for (var i = 0; i < ids.length; i++) {
+      if (prevStates[ids[i]] !== newStates[ids[i]]) return true;
+    }
+    return false;
   }
 
   _showRing(tab) { var o = this._health['ring_' + tab]; return o !== null ? o : this._health.ring; }
@@ -115,16 +168,78 @@ class AdaptivePlantCard extends HTMLElement {
     return str.charAt(0).toUpperCase() + str.slice(1);
   }
 
+  // ── HTML escape for user-controlled string values ────────────────────────
+  // All free-form user input (plant name, area, label, notes, latin name,
+  // repotted date input, image path) flows through string concatenation into
+  // innerHTML. This is defence-in-depth: HA is a single-user trusted context,
+  // but escaping prevents accidental breakage from valid characters like
+  // <, >, &, " in plant names or notes, and closes the self-XSS surface.
+  _esc(s) {
+    if (s === null || s === undefined) return '';
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  // ── Build a translucent background from any CSS color string ─────────────
+  // Replaces the prior `color + '26'` / `color + '22'` string-concat hack,
+  // which silently produced invalid CSS for non-hex inputs (named colors,
+  // rgb(), etc.) — e.g. 'Green' + '26' → 'Green26', which the browser
+  // discards. Returns a valid rgba() for any color CSS can parse.
+  //
+  // `alpha` is 0..1. Defaults to 0.15 to match the prior '26' hex alpha
+  // (0x26 / 0xFF ≈ 0.149). Pass 0.13 to match '22' (~0.133) where used.
+  _alphaBg(color, alpha) {
+    if (alpha === undefined) alpha = 0.15;
+    if (!color) return 'transparent';
+    // Fast path: 6-char hex.
+    var m = /^#([0-9a-fA-F]{6})$/.exec(color);
+    if (m) {
+      var h = m[1];
+      var r = parseInt(h.substring(0, 2), 16);
+      var g = parseInt(h.substring(2, 4), 16);
+      var b = parseInt(h.substring(4, 6), 16);
+      return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
+    }
+    // Fallback: let the browser parse anything else (named, 3-char hex,
+    // rgb(), hsl(), etc.) via a throwaway canvas, then convert.
+    try {
+      var ctx = document.createElement('canvas').getContext('2d');
+      ctx.fillStyle = '#000';
+      ctx.fillStyle = color;
+      var resolved = ctx.fillStyle; // canvas normalises to #rrggbb or rgba()
+      var hm = /^#([0-9a-fA-F]{6})$/.exec(resolved);
+      if (hm) {
+        var hh = hm[1];
+        var rr = parseInt(hh.substring(0, 2), 16);
+        var gg = parseInt(hh.substring(2, 4), 16);
+        var bb = parseInt(hh.substring(4, 6), 16);
+        return 'rgba(' + rr + ',' + gg + ',' + bb + ',' + alpha + ')';
+      }
+      // Already an rgba()/rgb() — rebuild with the requested alpha.
+      var rgbm = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/.exec(resolved);
+      if (rgbm) {
+        return 'rgba(' + rgbm[1] + ',' + rgbm[2] + ',' + rgbm[3] + ',' + alpha + ')';
+      }
+    } catch (e) { /* fall through */ }
+    // Last-resort fallback: return the raw color (loses translucency but
+    // avoids producing invalid CSS that breaks layout).
+    return color;
+  }
+
   _avatar(plant, tab) {
     var showRing  = tab && plant.health && this._showRing(tab);
     var ringColor = showRing ? this._healthColor(plant.health) : null;
     var rw        = this._health.ring_width;
     var ringStyle = showRing ? 'box-shadow:0 0 0 ' + rw + 'px ' + ringColor + ';' : '';
     if (plant.image) {
-      return '<div class="avatar-wrap"><div class="avatar" style="' + ringStyle + '"><img src="' + plant.image + '" alt="" /></div></div>';
+      return '<div class="avatar-wrap"><div class="avatar" style="' + ringStyle + '"><img src="' + this._esc(plant.image) + '" alt="" /></div></div>';
     }
     var initials = plant.name.split(' ').map(function(w) { return w[0]; }).join('').slice(0,2).toUpperCase();
-    return '<div class="avatar-wrap"><div class="avatar av-init" style="' + ringStyle + '">' + initials + '</div></div>';
+    return '<div class="avatar-wrap"><div class="avatar av-init" style="' + ringStyle + '">' + this._esc(initials) + '</div></div>';
   }
 
   _renderIcon(value, color, size) {
@@ -142,7 +257,7 @@ class AdaptivePlantCard extends HTMLElement {
     var size  = this._latinNameSize    ? this._latinNameSize    + 'px' : '11px';
     var color = this._latinNameColor   ? this._latinNameColor          : 'var(--secondary-text-color,#888)';
     var vpad  = this._latinNamePadding ? this._latinNamePadding + 'px' : '1px';
-    return '<div class="plant-latin" style="font-size:' + size + ';color:' + color + ';padding-top:' + vpad + ';padding-bottom:' + vpad + ';">' + p.latinName + '</div>';
+    return '<div class="plant-latin" style="font-size:' + size + ';color:' + color + ';padding-top:' + vpad + ';padding-bottom:' + vpad + ';">' + this._esc(p.latinName) + '</div>';
   }
 
   // ── Mark Repotted detail-action button ────────────────────────────────────
@@ -151,7 +266,7 @@ class AdaptivePlantCard extends HTMLElement {
     var icon  = this._repottedButtonIcon
       ? this._renderIcon(this._repottedButtonIcon, color, '15px') + ' '
       : '';
-    return '<button class="detail-btn btn-repotted" style="color:' + color + ';background:' + color + '26;"' +
+    return '<button class="detail-btn btn-repotted" style="color:' + color + ';background:' + this._alphaBg(color) + ';"' +
       ' data-repotted-entity="' + p.repottedDateInputId + '"' +
       ' data-repotted-btn="' + p.btnRepotted + '"' +
       ' data-plant-id="' + p.id + '">' +
@@ -299,13 +414,17 @@ class AdaptivePlantCard extends HTMLElement {
   _plants() {
     var hass = this._hass;
     if (!hass || !hass.entities) return [];
+    // Use the cached entity id list. _shouldRender keeps this fresh by
+    // refreshing whenever hass.entities identity changes.
+    if (!this._plantEntityIds) this._refreshPlantEntityCache();
+    var ids = this._plantEntityIds || [];
     var byDevice = {};
-    Object.keys(hass.entities).forEach(function(id) {
-      var ent = hass.entities[id];
-      if (ent.platform !== 'adaptive_plant' || !ent.device_id) return;
+    for (var i = 0; i < ids.length; i++) {
+      var ent = hass.entities[ids[i]];
+      if (!ent || !ent.device_id) continue;
       if (!byDevice[ent.device_id]) byDevice[ent.device_id] = [];
-      byDevice[ent.device_id].push(id);
-    });
+      byDevice[ent.device_id].push(ids[i]);
+    }
     return Object.keys(byDevice).map(function(devId) {
       var devIds   = byDevice[devId];
       var dev      = (hass.devices && hass.devices[devId]) || {};
@@ -405,14 +524,14 @@ class AdaptivePlantCard extends HTMLElement {
   _waterChip(str) {
     var icon = this._renderIcon(this._icons.water, this._icons.water_color, '14px');
     if (this._isOverdue(str)) {
-      return '<span class="chip" style="background:' + this._overdueColor + '22;color:' + this._overdueColor + '">' + icon + ' ' + str + '</span>';
+      return '<span class="chip" style="background:' + this._alphaBg(this._overdueColor, 0.13) + ';color:' + this._overdueColor + '">' + icon + ' ' + str + '</span>';
     }
     return '<span class="chip chip-water">' + icon + ' ' + (str === 'Today' ? 'Water today' : str) + '</span>';
   }
   _fertChip(str) {
     var icon = this._renderIcon(this._icons.fertilize, this._icons.fertilize_color, '14px');
     if (this._isOverdue(str)) {
-      return '<span class="chip" style="background:' + this._overdueColor + '22;color:' + this._overdueColor + '">' + icon + ' ' + str + '</span>';
+      return '<span class="chip" style="background:' + this._alphaBg(this._overdueColor, 0.13) + ';color:' + this._overdueColor + '">' + icon + ' ' + str + '</span>';
     }
     return '<span class="chip chip-fert">' + icon + ' ' + (str === 'Today' ? 'Fertilize today' : str) + '</span>';
   }
@@ -426,7 +545,7 @@ class AdaptivePlantCard extends HTMLElement {
     var color   = overdue ? this._icons.health_confirm_overdue_color : this._icons.health_confirm_color;
     var label   = overdue ? 'Update Due' : 'Confirm Health';
     var icon    = this._renderIcon(this._icons.health_confirm, color, '15px');
-    var bg      = color + '26';
+    var bg      = this._alphaBg(color);
     return '<button class="detail-btn btn-health" style="color:' + color + ';background:' + bg + ';" data-entity="' + p.btnConfirmHealth + '">' +
       icon + ' ' + label +
     '</button>';
@@ -451,14 +570,14 @@ class AdaptivePlantCard extends HTMLElement {
       var byLabel = self._splitByLabel(byArea[area]);
       var inner   = self._labelEntries(byLabel).map(function(e) {
         var lk  = e[0]; var lps = e[1];
-        var hdr = lk ? '<div class="label-sub-header">' + lk + '</div>' : '';
+        var hdr = lk ? '<div class="label-sub-header">' + self._esc(lk) + '</div>' : '';
         return hdr + lps.map(function(p) {
           var wu = self._isUrgent(p.daysWater);
           var fu = self._isUrgent(p.daysFert);
           return '<div class="plant-row">' +
             self._avatar(p, 'today') +
             '<div class="plant-info">' +
-              '<div class="plant-name">' + p.name + '</div>' +
+              '<div class="plant-name">' + self._esc(p.name) + '</div>' +
               self._latinNameHtml(p) +
               (self._showText('today') && p.health ? '<div class="plant-meta"><span class="health-badge" style="color:' + self._healthColor(p.health) + '">' + self._capitalise(p.health) + '</span></div>' : '') +
               '<div class="chips">' + (wu ? self._waterChip(p.daysWater) : '') + (fu ? self._fertChip(p.daysFert) : '') + '</div>' +
@@ -471,7 +590,7 @@ class AdaptivePlantCard extends HTMLElement {
           '</div>';
         }).join('');
       }).join('');
-      return '<div class="area-group"><div class="area-header">' + area + '</div>' + inner + '</div>';
+      return '<div class="area-group"><div class="area-header">' + self._esc(area) + '</div>' + inner + '</div>';
     }).join('');
     return summary + rows;
   }
@@ -525,13 +644,13 @@ class AdaptivePlantCard extends HTMLElement {
         var byLabel  = byArea[area];
         var lblHtml  = self._labelEntries(byLabel).map(function(e) {
           var lk      = e[0]; var byPlant = e[1];
-          var hdr     = lk ? '<div class="label-sub-header">' + lk + '</div>' : '';
+          var hdr     = lk ? '<div class="label-sub-header">' + self._esc(lk) + '</div>' : '';
           var rows    = Object.keys(byPlant).map(function(pid) {
             var pg = byPlant[pid]; var p = pg.plant;
             return '<div class="plant-row">' +
               self._avatar(p, 'upcoming') +
               '<div class="plant-info">' +
-                '<div class="plant-name">' + p.name + '</div>' +
+                '<div class="plant-name">' + self._esc(p.name) + '</div>' +
                 self._latinNameHtml(p) +
                 (self._showText('upcoming') && p.health ? '<div class="plant-meta"><span class="health-badge" style="color:' + self._healthColor(p.health) + '">' + self._capitalise(p.health) + '</span></div>' : '') +
                 '<div class="chips">' +
@@ -547,7 +666,7 @@ class AdaptivePlantCard extends HTMLElement {
           }).join('');
           return hdr + rows;
         }).join('');
-        return '<div class="area-subgroup"><div class="area-sub-header">' + area + '</div>' + lblHtml + '</div>';
+        return '<div class="area-subgroup"><div class="area-sub-header">' + self._esc(area) + '</div>' + lblHtml + '</div>';
       }).join('');
 
       return '<div class="day-group"><div class="day-header">' + dayLabel + '</div>' + areaHtml + '</div>';
@@ -579,7 +698,7 @@ class AdaptivePlantCard extends HTMLElement {
       var byLabel  = self._splitByLabel(byArea[area]);
       var inner    = self._labelEntries(byLabel).map(function(e) {
         var lk  = e[0]; var lps = e[1];
-        var hdr = lk ? '<div class="label-sub-header">' + lk + '</div>' : '';
+        var hdr = lk ? '<div class="label-sub-header">' + self._esc(lk) + '</div>' : '';
         var rows = lps.map(function(p) {
           var isExp   = self._expanded === p.id;
           var urgent  = self._isUrgent(p.daysWater) || self._isUrgent(p.daysFert);
@@ -599,7 +718,7 @@ class AdaptivePlantCard extends HTMLElement {
           var row = '<div class="plant-row plant-row-click" data-expand="' + p.id + '">' +
             self._avatar(p, 'overview') +
             '<div class="plant-info">' +
-              '<div class="plant-name">' + p.name + (urgent ? '<span class="urgent-dot"></span>' : '') + '</div>' +
+              '<div class="plant-name">' + self._esc(p.name) + (urgent ? '<span class="urgent-dot"></span>' : '') + '</div>' +
               self._latinNameHtml(p) +
               '<div class="plant-meta">' +
                 (showTxt && p.health ? '<span class="health-badge" style="color:' + self._healthColor(p.health) + '">' + self._capitalise(p.health) + '</span>' : '') +
@@ -615,14 +734,14 @@ class AdaptivePlantCard extends HTMLElement {
           var notesHtml = '';
           if (p.notesEntityId) {
             notesHtml = en
-              ? '<div class="notes-section"><textarea class="notes-input" id="notes-input-' + p.id + '" placeholder="Add notes...">' + p.notes + '</textarea>' +
+              ? '<div class="notes-section"><textarea class="notes-input" id="notes-input-' + p.id + '" placeholder="Add notes...">' + self._esc(p.notes) + '</textarea>' +
                 '<div class="notes-actions">' +
                   '<button class="notes-save" data-notes-entity="' + p.notesEntityId + '" data-plant-id="' + p.id + '">Save</button>' +
                   '<button class="notes-cancel" data-plant-id="' + p.id + '">Cancel</button>' +
                 '</div></div>'
               : '<div class="notes-section"><div class="notes-display" data-edit-notes="' + p.id + '">' +
                 '<span class="detail-label">Notes</span>' +
-                '<span class="notes-value">' + (p.notes || '<span class="notes-placeholder">Tap to add notes\u2026</span>') + '</span>' +
+                '<span class="notes-value">' + (p.notes ? self._esc(p.notes) : '<span class="notes-placeholder">Tap to add notes\u2026</span>') + '</span>' +
                 '<span class="notes-edit-icon">✏️</span>' +
                 '</div></div>';
           }
@@ -634,21 +753,21 @@ class AdaptivePlantCard extends HTMLElement {
           var repottedRows = '';
           if (p.btnRepotted) {
             var lastRepottedVal = (p.lastRepotted && p.lastRepotted !== 'unknown' && p.lastRepotted !== 'unavailable')
-              ? '<span class="detail-value">' + p.lastRepotted + '</span>'
+              ? '<span class="detail-value">' + self._esc(p.lastRepotted) + '</span>'
               : '<span class="detail-value" style="color:var(--secondary-text-color,#888);font-style:italic;">Never</span>';
             repottedRows = '<div class="detail-row"><span class="detail-label">Last repotted</span>' + lastRepottedVal + '</div>';
             if (self._showRepotting) {
               repottedRows += '<div class="detail-row repotted-row">' +
                 '<span class="detail-label">Repotted on</span>' +
-                '<input class="repotted-input" id="repotted-input-' + p.id + '" type="text" placeholder="YYYY-MM-DD (optional)" value="' + p.repottedDateInput + '" maxlength="10" />' +
+                '<input class="repotted-input" id="repotted-input-' + p.id + '" type="text" placeholder="YYYY-MM-DD (optional)" value="' + self._esc(p.repottedDateInput) + '" maxlength="10" />' +
               '</div>';
             }
           }
 
           var detail = '<div class="plant-detail">' +
-            (p.nextWatering   ? '<div class="detail-row"><span class="detail-label">Next watering</span><span class="detail-value">' + p.nextWatering + '</span></div>' : '') +
+            (p.nextWatering   ? '<div class="detail-row"><span class="detail-label">Next watering</span><span class="detail-value">' + self._esc(p.nextWatering) + '</span></div>' : '') +
             (p.hasMoisture    ? '<div class="detail-row"><span class="detail-label">Soil moisture</span><span class="detail-value" style="color:#64b4ff;font-weight:600;">' + Math.round(p.moistureVal) + '%</span></div>' : '') +
-            (p.nextFertilized ? '<div class="detail-row"><span class="detail-label">Next fertilization</span><span class="detail-value">' + p.nextFertilized + '</span></div>' : '') +
+            (p.nextFertilized ? '<div class="detail-row"><span class="detail-label">Next fertilization</span><span class="detail-value">' + self._esc(p.nextFertilized) + '</span></div>' : '') +
             repottedRows +
             (p.healthEntityId ? '<div class="detail-row"><span class="detail-label">Health</span>' +
               '<select class="health-select" data-health-entity="' + p.healthEntityId + '">' +
@@ -666,7 +785,7 @@ class AdaptivePlantCard extends HTMLElement {
         }).join('');
         return hdr + rows;
       }).join('');
-      return '<div class="area-group"><div class="area-header">' + area + '</div>' + inner + '</div>';
+      return '<div class="area-group"><div class="area-header">' + self._esc(area) + '</div>' + inner + '</div>';
     }).join('');
   }
 
@@ -721,8 +840,15 @@ class AdaptivePlantCard extends HTMLElement {
   _css(height, width) {
     var oc = this._overdueColor;
     var bg = this._showBackground;
+    // When the background toggle is on:
+    //   - if the user set a custom card_background_color, use it directly
+    //   - otherwise fall back to the HA theme's --card-background-color
+    // When the toggle is off, render transparent (unchanged from prior behaviour).
+    var bgValue = this._cardBackgroundColor
+      ? this._cardBackgroundColor
+      : 'var(--card-background-color,#1c1c1e)';
     var cardBg = bg
-      ? 'background:var(--card-background-color,#1c1c1e);'
+      ? 'background:' + bgValue + ';'
       : 'background:transparent !important;--ha-card-background:transparent;--card-background-color:transparent;box-shadow:none !important;border:none !important;backdrop-filter:none !important;-webkit-backdrop-filter:none !important;';
     var pseudoReset = !bg
       ? 'ha-card::before,ha-card::after{display:none !important;border:none !important;background:transparent !important;backdrop-filter:none !important;}'
@@ -733,7 +859,7 @@ class AdaptivePlantCard extends HTMLElement {
       pseudoReset,
       '.tabs{display:flex;border-bottom:1px solid rgba(255,255,255,0.08);padding:0 16px;flex-shrink:0;}',
       '.tab{flex:1;padding:14px 0;text-align:center;cursor:pointer;font-size:14px;font-weight:500;color:var(--secondary-text-color,#888);border:none;border-bottom:2px solid transparent;background:none;outline:none;transition:color 0.2s,border-color 0.2s;}',
-      '.tab.active{color:#7cb97e;border-bottom-color:#7cb97e;}',
+      '.tab.active{color:' + this._tabActiveColor + ';border-bottom-color:' + this._tabActiveColor + ';}',
       '.content{padding:8px 0 16px;' + (height ? 'flex:1;overflow-y:auto;' : 'min-height:160px;') + '}',
       '.content::-webkit-scrollbar{width:4px;}.content::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:2px;}',
       '.footer{flex-shrink:0;}',
@@ -883,7 +1009,13 @@ class AdaptivePlantCardEditor extends HTMLElement {
       '<div class="field-group"><div class="field-label">Card appearance</div><div class="toggle-row">' +
         this._toggle('Show card background',      'show_background',  this._get('show_background',  true))  +
         this._toggle('Pin hold button to bottom', 'pin_hold_button',  this._get('pin_hold_button',  false)) +
-      '</div></div>' +
+      '</div>' +
+        '<div class="field-row" style="margin-top:6px;">' +
+          this._colorField('Card background color', 'card_background_color', this._get('card_background_color', '#1c1c1e')) +
+          this._colorField('Active tab color',      'tab_active_color',      this._get('tab_active_color',      '#7cb97e')) +
+        '</div>' +
+        '<div class="field-hint">Card background colour only applies when <em>Show card background</em> is on. Active tab colour sets the text and underline of the selected tab — useful when your card background reduces contrast against the default green.</div>' +
+      '</div>' +
       '<div class="field-group"><div class="field-label">Moisture sensor options</div><div class="toggle-row">' +
         this._toggle('Hide moisture-tracked plants from Upcoming', 'exclude_moisture_from_upcoming', this._get('exclude_moisture_from_upcoming', false)) +
         this._toggle('Show moisture % instead of watering days in Overview', 'show_moisture_in_overview', this._get('show_moisture_in_overview', false)) +
@@ -994,11 +1126,11 @@ class AdaptivePlantCardEditor extends HTMLElement {
         self._textField('Icon', ip, self._get(ip, di), di || 'none') + self._colorField('Color', cp, self._get(cp, dc)) +
       '</div></div>';
     };
-    return row('Water chip',          'icons.water',                        'icons.water_color',                  '💧',              '#64b4ff') +
-           row('Fertilize chip',      'icons.fertilize',                    'icons.fertilize_color',              '🌸',              '#7cb97e') +
-           row('Snooze button',       'icons.snooze',                       'icons.snooze_color',                 '🔔',              '#aaaaaa') +
-           row('Fertilize done',      'icons.fertilize_done',               'icons.fertilize_done_color',         '✅',              '#7cb97e') +
-           row('Water done',          'icons.water_done',                   'icons.water_done_color',             '✔',               '#64b4ff') +
+    return row('Water chip',          'icons.water',                        'icons.water_color',                  'mdi:water',       '#64b4ff') +
+           row('Fertilize chip',      'icons.fertilize',                    'icons.fertilize_color',              'mdi:flower',      '#7cb97e') +
+           row('Snooze button',       'icons.snooze',                       'icons.snooze_color',                 'mdi:bell-sleep',  '#aaaaaa') +
+           row('Fertilize done',      'icons.fertilize_done',               'icons.fertilize_done_color',         'mdi:check',       '#7cb97e') +
+           row('Water done',          'icons.water_done',                   'icons.water_done_color',             'mdi:check',       '#64b4ff') +
            row('Confirm Health',      'icons.health_confirm',               'icons.health_confirm_color',         'mdi:cards-heart', '#aaaaaa') +
            '<div class="icon-row"><span class="icon-label">Update Due color</span><div class="icon-inputs">' +
              '<div class="field-hint" style="margin:0;grid-column:1/-1;">Color used for both icon and button when a health check-in is overdue.</div>' +
