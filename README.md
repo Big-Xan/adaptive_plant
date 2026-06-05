@@ -57,7 +57,7 @@ entry/plant afterwards (**Settings → Devices & Services → Adaptive Plant →
 - Adaptive watering logic is disabled for moisture sensor plants — the sensor drives watering decisions, the schedule acts as a fallback only
 - Moisture sensor, dry threshold, and wet threshold can all be added, changed, or removed after setup via Configure. Use the Enable moisture sensor toggle to remove a sensor — toggling off clears the sensor and both thresholds.
 
-> **Tip:** To remove a moisture sensor after setup, open Configure, toggle Enable moisture sensor off, and save.
+> **Tip:** To remove a moisture sensor after setup, open Configure, toggle Enable moisture sensor off, and save. (The moisture sensor uses Home Assistant's entity picker, which can't be cleared by deleting the value — the toggle is the supported way to remove it.)
 
 ### 📝 Notes (optional)
 - Free-form text field stored per plant
@@ -80,8 +80,6 @@ entry/plant afterwards (**Settings → Devices & Services → Adaptive Plant →
 - Store the scientific name for each plant
 - Enabled or disabled per plant during setup or via Configure at any time
 - Displayed on the companion card below the plant name (if enabled)
-
-> **Tip:** To remove a latin name after setup, open Configure and toggle Enable latin name off.
 
 ---
 
@@ -116,7 +114,7 @@ entry/plant afterwards (**Settings → Devices & Services → Adaptive Plant →
 
 To edit any setting after setup, go to **Settings → Devices & Services → Adaptive Plant → Configure**.
 
-> **Tip:** To remove a label after setup, open Configure and leave the label field blank, type a space and save, or type the word `null` — all are treated as no label.
+> **Tip**: To remove a label, latin name, or image path after setup, open Configure, clear the field, and save.
 
 ---
 
@@ -342,7 +340,7 @@ https://raw.githubusercontent.com/Big-Xan/adaptive_plant/main/custom_components/
 
 No — and that's by design. Adaptive Plant tracks and adapts to *your*
 care routine rather than prescribing one. It learns your plant's actual
-needs over time based on how you interact with it ("oh the soil is stil wet I need to snooze it again.", but it won't tell you
+needs over time based on how you interact with it ("oh the soil is still wet I need to snooze it again."), but it won't tell you
 that a Monstera wants indirect light or that succulents need to dry out
 completely between waterings.
 
