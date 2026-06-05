@@ -48,6 +48,7 @@ from .const import (
     STATE_EARLY_WATERING_COUNT,
     STATE_HEALTH,
     STATE_HEALTH_LAST_UPDATED,
+    STATE_HEALTH_NOTIF_DATE,
     STATE_LAST_FERTILIZED,
     STATE_LAST_REPOTTED,
     STATE_REPOTTED_DATE_INPUT,
@@ -155,7 +156,12 @@ class PlantData:
 
     @property
     def image_path(self) -> str | None:
-        return self._entry.options.get(CONF_IMAGE_PATH) or self._entry.data.get(CONF_IMAGE_PATH)
+        # Check options first using key presence — an empty string in options
+        # means the user intentionally cleared it, so don't fall back to entry.data.
+        if CONF_IMAGE_PATH in self._entry.options:
+            val = self._entry.options[CONF_IMAGE_PATH]
+            return val if val else None
+        return self._entry.data.get(CONF_IMAGE_PATH)
 
     @property
     def area(self) -> str | None:
@@ -434,26 +440,20 @@ class PlantData:
         if value not in HEALTH_OPTIONS:
             _LOGGER.warning("%s: invalid health value '%s' — ignored", self.plant_name, value)
             return
-        # Always write timestamp even if value unchanged — resets the reminder
-        # clock when user confirms current status without changing it.
-        current = self._entry.options
-        merged = {
-            **current,
+        # No-op when the value would not change. Resetting the check-in clock
+        # without changing the health value is the job of confirm_health().
+        if value == self.health:
+            return
+        await self._persist({
             STATE_HEALTH: value,
             STATE_HEALTH_LAST_UPDATED: date.today().isoformat(),
-        }
-        self._hass.config_entries.async_update_entry(self._entry, options=merged)
-        self._notify_listeners()
+        })
 
     async def confirm_health(self) -> None:
         """Reset the health check-in clock without changing the health value."""
-        current = self._entry.options
-        merged = {
-            **current,
+        await self._persist({
             STATE_HEALTH_LAST_UPDATED: date.today().isoformat(),
-        }
-        self._hass.config_entries.async_update_entry(self._entry, options=merged)
-        self._notify_listeners()
+        })
 
     # ── Fertilization ────────────────────────────────────────────────────────────
 
@@ -563,6 +563,11 @@ class PlantData:
 
     async def daily_rollover(self) -> None:
         today = date.today()
+        # Track whether anything was actually persisted this rollover. _persist
+        # notifies listeners on real change; we only need a trailing notify
+        # when nothing changed but the date rolled over, so date-derived
+        # display sensors (Days Until Watering, etc.) still refresh.
+        persisted = False
 
         # For moisture sensor plants, check current soil moisture before
         # flagging as due. If moisture is above the dry threshold the plant
@@ -587,37 +592,38 @@ class PlantData:
                             self.plant_name, new_next,
                         )
                         await self._persist({STATE_NEXT_WATERING: new_next})
+                        persisted = True
                 except (ValueError, TypeError):
                     pass
 
+        # Health check-in reminder — compute days_since once. A missing or
+        # malformed timestamp is treated as "never updated" (needs notification).
         health_updated_str = self.health_last_updated
-        needs_notification = False
-
+        days_since: int | None = None
         if health_updated_str:
             try:
                 days_since = (today - date.fromisoformat(health_updated_str)).days
-                if days_since >= self.health_prompt_interval:
-                    needs_notification = True
             except ValueError:
-                needs_notification = True
-        else:
-            needs_notification = True
+                pass
+
+        needs_notification = (
+            days_since is None or days_since >= self.health_prompt_interval
+        )
 
         if needs_notification:
-            # Only fire once per day — compare last notified date to prevent
-            # daily re-fire until the user presses Confirm Health.
-            last_notified = self._entry.options.get("_health_notif_date")
+            # Only fire once per day — prevent daily re-fire until user presses
+            # Confirm Health (which resets STATE_HEALTH_LAST_UPDATED).
+            last_notified = self._entry.options.get(STATE_HEALTH_NOTIF_DATE)
             if last_notified != today.isoformat():
-                days_since_val = None
-                if health_updated_str:
-                    try:
-                        days_since_val = (today - date.fromisoformat(health_updated_str)).days
-                    except ValueError:
-                        pass
-                self._fire_health_notification(days_since_val)
-                await self._persist({"_health_notif_date": today.isoformat()})
+                self._fire_health_notification(days_since)
+                await self._persist({STATE_HEALTH_NOTIF_DATE: today.isoformat()})
+                persisted = True
 
-        self._notify_listeners()
+        # If nothing was persisted, fire listeners explicitly so date-derived
+        # display values refresh for the new day. When _persist fires it has
+        # already notified, so we skip the trailing call to avoid double-fire.
+        if not persisted:
+            self._notify_listeners()
 
     def _fire_health_notification(self, days_since: int | None) -> None:
         body = (
