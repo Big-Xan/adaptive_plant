@@ -143,7 +143,7 @@
           "moisture_sensor": "Moisture sensor"
         },
         "data_description": {
-          "label": "Optional sublabel to group plants within an area (e.g. Left shelf, Window sill). Leave blank to remove.",
+          "label": "Optional sublabel to group plants within an area (e.g. Left shelf, Window sill). Leave blank or enter 'null' to remove.",
           "notes_enabled": "Toggle to enable or disable the notes field for this plant.",
           "fertilization_enabled": "Toggle to enable or disable fertilization tracking. Previous dates are preserved when re-enabled.",
           "repotting_enabled": "Toggle to enable or disable repotting tracking. Previous dates are preserved when re-enabled.",
