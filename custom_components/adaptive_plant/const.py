@@ -38,6 +38,9 @@ STATE_NEXT_FERTILIZED = "next_fertilized"
 STATE_NOTES = "notes"
 STATE_LAST_REPOTTED = "last_repotted"
 STATE_REPOTTED_DATE_INPUT = "repotted_date_input"
+# Internal marker — date the last "health check-in overdue" notification fired.
+# Used by daily_rollover to prevent re-firing more than once per day.
+STATE_HEALTH_NOTIF_DATE = "_health_notif_date"
 
 # ── Setup-wizard resolved keys (stored in entry.data, seeded to options) ──────
 CONF_RESOLVED_LAST_REPOTTED = "_resolved_last_repotted"
