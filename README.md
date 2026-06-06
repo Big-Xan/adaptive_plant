@@ -202,31 +202,32 @@ The card is fully configurable via the visual editor — no YAML required. The c
 type: custom:adaptive-plant-card
 ```
 
-OUTDATED WILL REPLACE - THERE ARE MORE OPTIONS. DEFAULTS ARE NOW MDI ICONS **Using native HA mdi icons, centered in-room labels with color changed to gold, height max set with mark all tasks completed button pinned to the bottom of the card so it's always in the same place:**
+**Custom palette — deep blue-gray background, muted sage tabs, warm amber area headers and copper label sub-headers. Max height set, latin name enabled, centered labels, pinned hold button:**
 
-![Adaptive Plant Card with MDI icons](https://github.com/user-attachments/assets/27e1bb06-9ece-4d09-9fa4-999f80cbdd84)
+<img width="2912" height="1521" alt="BIG(22)" src="https://github.com/user-attachments/assets/21cf4cb7-d1de-431d-898c-4c88fe429ded" />
+
 ```yaml
 type: custom:adaptive-plant-card
-label_align: center
-label_color: gold
 height: 750
 pin_hold_button: true
-health:
-  ring: true
-  text: false
-  colors:
-    excellent: "#7cb97e"
-icons:
-  water: mdi:water
-  water_color: "#64b4ff"
-  fertilize: mdi:flower
-  fertilize_color: "#7cb97e"
-  snooze: mdi:bell-sleep
-  snooze_color: "#aaaaaa"
-  fertilize_done: mdi:check
-  fertilize_done_color: "#7cb97e"
-  water_done: mdi:check
-  water_done_color: "#64b4ff"
+
+# Card appearance
+show_background: true
+card_background_color: '#1f2933'        # deep blue-gray
+tab_active_color: '#8fb88a'             # muted sage — softer than the default green
+
+# Area & label headers
+area_header_size: 13
+area_header_color: '#e8b86a'            # warm amber — clearly distinct from health greens
+label_align: center
+label_color: '#c89968'                  # softer copper — visually nested below the area header
+label_header_size: 11
+
+# Latin name
+show_latin_name: true
+latin_name_size: 11
+latin_name_color: '#9ba8b4'             # cool gray-blue, low-contrast on purpose
+latin_name_padding: 2
 ```
 
 **Visual editor as of v17 — every option is configurable without touching YAML. Customization is virtually endless:**
