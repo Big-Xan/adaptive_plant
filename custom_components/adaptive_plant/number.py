@@ -7,7 +7,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DEFAULT_FERTILIZATION_INTERVAL, DEFAULT_WATERING_INTERVAL, DOMAIN
+from .const import DOMAIN
 from .plant import PlantData
 
 
