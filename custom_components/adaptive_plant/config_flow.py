@@ -500,10 +500,17 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
                 self._pending_clear_label = clear_label
                 return await self.async_step_moisture_options()
             else:
-                # Sensor cleared — strip moisture-related keys from options
+                # Sensor cleared — tombstone the sensor and strip thresholds.
+                # The sensor key gets an empty-string tombstone (not a pop)
+                # because PlantData.moisture_sensor falls back to entry.data
+                # when the key is missing — popping would resurrect a sensor
+                # chosen during the original setup wizard. The thresholds are
+                # popped: every moisture code path gates on moisture_sensor
+                # first, so their entry.data fallback is inert.
                 merged = {**current_opts, **cleaned}
-                for key in (CONF_MOISTURE_SENSOR, CONF_DRY_THRESHOLD, CONF_WET_THRESHOLD):
+                for key in (CONF_DRY_THRESHOLD, CONF_WET_THRESHOLD):
                     merged.pop(key, None)
+                merged[CONF_MOISTURE_SENSOR] = ""
                 # Explicit label clear — write an empty-string tombstone rather
                 # than popping the key. The PlantData.label property falls
                 # back to entry.data when CONF_LABEL is missing from options,
@@ -514,15 +521,16 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
                     merged[CONF_LABEL] = ""
                 # Also clear blanked fields — but skip keys we've already
                 # handled explicitly above. Tombstone keys (CONF_LABEL,
-                # CONF_LATIN_NAME, CONF_IMAGE_PATH) are included because their
-                # empty-string tombstones written earlier are intentional —
-                # the loop would otherwise treat "" as a blank and delete
-                # them, falling back to stale entry.data values from the
-                # original setup wizard.
+                # CONF_LATIN_NAME, CONF_IMAGE_PATH, CONF_MOISTURE_SENSOR) are
+                # included because their empty-string tombstones written
+                # earlier are intentional — the loop would otherwise treat
+                # "" as a blank and delete them, falling back to stale
+                # entry.data values from the original setup wizard.
                 _skip_clear = {
                     CONF_LABEL,
                     CONF_LATIN_NAME,
                     CONF_IMAGE_PATH,
+                    CONF_MOISTURE_SENSOR,
                     CONF_NOTES_ENABLED,
                     CONF_ENABLE_LATIN_NAME,
                     CONF_FERTILIZATION_ENABLED,
@@ -558,12 +566,15 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
 
         defaults = {**entry.data, **current_opts}
 
-        # Resolve the currently active moisture sensor (options take priority)
-        current_moisture = (
-            current_opts.get(CONF_MOISTURE_SENSOR)
-            or entry.data.get(CONF_MOISTURE_SENSOR)
-            or None
-        )
+        # Resolve the currently active moisture sensor. Key-presence check
+        # (mirroring PlantData.moisture_sensor) so the empty-string tombstone
+        # written on disable shadows entry.data — an `or` chain here would
+        # fall through the tombstone and re-show the stale setup-wizard
+        # sensor with the toggle defaulted back on.
+        if CONF_MOISTURE_SENSOR in current_opts:
+            current_moisture = current_opts[CONF_MOISTURE_SENSOR] or None
+        else:
+            current_moisture = entry.data.get(CONF_MOISTURE_SENSOR)
 
         schema_fields: dict = {
             vol.Optional(
