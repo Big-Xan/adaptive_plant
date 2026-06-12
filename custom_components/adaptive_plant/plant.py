@@ -8,7 +8,6 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from datetime import date, timedelta
-from typing import Optional
 
 from homeassistant.components.persistent_notification import async_create as pn_async_create
 from homeassistant.config_entries import ConfigEntry
@@ -40,7 +39,6 @@ from .const import (
     DEFAULT_HEALTH_PROMPT_INTERVAL,
     DEFAULT_SNOOZE_THRESHOLD,
     DEFAULT_WATERING_INTERVAL,
-    DOMAIN,
     HEALTH_OPTIONS,
     NOTIFICATION_ID_PREFIX,
     OPT_FERTILIZATION_INTERVAL,
@@ -169,7 +167,15 @@ class PlantData:
 
     @property
     def moisture_sensor(self) -> str | None:
-        return self._entry.options.get(CONF_MOISTURE_SENSOR) or self._entry.data.get(CONF_MOISTURE_SENSOR)
+        # Key-presence check (same pattern as image_path): the options flow
+        # writes an empty-string tombstone when the moisture toggle is
+        # switched off. The tombstone must shadow the entry.data fallback,
+        # otherwise a sensor selected during the original setup wizard
+        # resurrects after being disabled.
+        if CONF_MOISTURE_SENSOR in self._entry.options:
+            val = self._entry.options[CONF_MOISTURE_SENSOR]
+            return val if val else None
+        return self._entry.data.get(CONF_MOISTURE_SENSOR)
 
     @property
     def dry_threshold(self) -> float | None:
