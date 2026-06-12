@@ -60,7 +60,6 @@ class PlantSensorBase(SensorEntity):
             name=self._plant.plant_name,
             manufacturer="Adaptive Plant",
             model="Plant Monitor",
-            entry_type=None,
         )
 
     async def async_added_to_hass(self) -> None:
@@ -286,7 +285,7 @@ class CurrentMoistureSensor(PlantSensorBase):
         sensor_id = self._plant.moisture_sensor
         if not sensor_id:
             return None
-        state = self._plant._hass.states.get(sensor_id)
+        state = self.hass.states.get(sensor_id)
         if state is None or state.state in ("unknown", "unavailable"):
             return None
         try:
@@ -300,6 +299,12 @@ class CurrentMoistureSensor(PlantSensorBase):
         # Also subscribe directly to the underlying sensor so the entity
         # updates in real time with every new reading, not just when the
         # integration writes to options.
+        #
+        # NOTE: do not remove this in favor of the PlantData listener alone.
+        # PlantData.handle_moisture_change only persists state on threshold
+        # crossings, so without this direct subscription the mirror sensor
+        # (and the card) would go stale between crossings. Two subscriptions
+        # are intentional.
         sensor_id = self._plant.moisture_sensor
         if sensor_id:
             self.async_on_remove(
@@ -318,7 +323,7 @@ class CurrentMoistureSensor(PlantSensorBase):
         sensor_id = self._plant.moisture_sensor
         if not sensor_id:
             return False
-        state = self._plant._hass.states.get(sensor_id)
+        state = self.hass.states.get(sensor_id)
         return state is not None and state.state not in ("unknown", "unavailable")
 
 
