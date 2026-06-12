@@ -16,7 +16,6 @@ from homeassistant.helpers.event import (
 
 from .const import (
     CONF_AREA,
-    CONF_MOISTURE_SENSOR,
     DEFAULT_HEALTH,
     DOMAIN,
     HEALTH_OPTIONS,
