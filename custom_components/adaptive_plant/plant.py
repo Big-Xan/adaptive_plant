@@ -677,3 +677,28 @@ class PlantData:
                 self.plant_name,
             )
             await self.mark_watered()
+        elif dry is not None and moisture > dry:
+            # Self-healing for missed rollover checks. The 00:05 rollover
+            # only pushes next_watering forward if the sensor is available
+            # at that exact moment; battery/BLE sensors are often asleep or
+            # unavailable overnight. If the check is missed, the plant gets
+            # stuck showing due — mid-band readings (dry < m < wet)
+            # previously fell through both branches above and never
+            # corrected it. Apply the same correction the rollover would
+            # have: soil is moist and the plant is flagged due, so push to
+            # tomorrow without touching snooze or adaptive logic. No-ops
+            # once next_watering is in the future, so this fires at most
+            # once per day. (GitHub issue #11)
+            nw = self.next_watering
+            if nw:
+                try:
+                    if date.fromisoformat(nw) <= today:
+                        new_next = (today + timedelta(days=1)).isoformat()
+                        _LOGGER.debug(
+                            "%s: due but moisture above dry threshold — pushing next watering to %s",
+                            self.plant_name,
+                            new_next,
+                        )
+                        await self._persist({STATE_NEXT_WATERING: new_next})
+                except ValueError:
+                    pass
