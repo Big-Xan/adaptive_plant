@@ -150,6 +150,9 @@ class PlantData:
 
     @property
     def enable_image(self) -> bool:
+        # Options override takes precedence — allows enabling after setup.
+        if CONF_ENABLE_IMAGE in self._entry.options:
+            return bool(self._entry.options[CONF_ENABLE_IMAGE])
         return bool(self._entry.data.get(CONF_ENABLE_IMAGE, False))
 
     @property
