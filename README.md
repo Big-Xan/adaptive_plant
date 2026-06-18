@@ -1,8 +1,8 @@
 # <img src="https://raw.githubusercontent.com/Big-Xan/adaptive_plant/main/custom_components/adaptive_plant/brand/icon.png" width="32" height="32" style="vertical-align:middle"> Adaptive Plant
 
-A fully local, event-driven Home Assistant custom integration for tracking and managing your plants — with intelligent adaptive watering logic that learns your plants' needs over time. Includes a companion Lovelace card with a full visual editor and a task reminder blueprint for Companion App notifications.
+A fully local, event-driven Home Assistant custom integration for tracking and managing your plants — with intelligent adaptive watering logic that learns your plants' needs over time. Includes a highly customizable companion Lovelace card with a full visual editor and a task reminder blueprint for Companion App notifications.
 
-![Adaptive Plant Card](https://github.com/user-attachments/assets/e5a4543a-0075-4317-8cac-eb741025767f)
+![Adaptive Plant Card](https://github.com/user-attachments/assets/587f947e-19eb-41ad-8742-bec8674febfc)
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 ![HA Version](https://img.shields.io/badge/HA-2024.6%2B-blue)
