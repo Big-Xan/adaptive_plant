@@ -473,14 +473,18 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
                 # Toggle off — remove stored latin name
                 cleaned.pop(CONF_LATIN_NAME, None)
 
-            # Image path — handle the text field when image is enabled.
+            # Image toggle — write explicitly, and handle the text field.
             # Empty string is written as a tombstone (mirroring CONF_LABEL and
             # CONF_LATIN_NAME) so the PlantData.image_path property's fallback
             # to entry.data doesn't resurface a stale value set during the
             # original setup wizard.
-            if entry.data.get(CONF_ENABLE_IMAGE):
+            image_enabled = bool(user_input.get(CONF_ENABLE_IMAGE, False))
+            cleaned[CONF_ENABLE_IMAGE] = image_enabled
+            if image_enabled:
                 raw_image = user_input.get(CONF_IMAGE_PATH, "")
                 cleaned[CONF_IMAGE_PATH] = raw_image.strip() if raw_image else ""
+            else:
+                cleaned.pop(CONF_IMAGE_PATH, None)
 
             # Handle moisture sensor selection.
             # The toggle is the authoritative clear mechanism — if it's off we
@@ -535,6 +539,7 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
                     CONF_ENABLE_LATIN_NAME,
                     CONF_FERTILIZATION_ENABLED,
                     CONF_REPOTTING_ENABLED,
+                    CONF_ENABLE_IMAGE,
                 }
                 for k, v in user_input.items():
                     if k not in _skip_clear and v in (None, "") and k in merged:
@@ -595,14 +600,6 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
             ),
         }
 
-        if entry.data.get(CONF_ENABLE_IMAGE):
-            schema_fields[
-                vol.Optional(
-                    CONF_IMAGE_PATH,
-                    description={"suggested_value": defaults.get(CONF_IMAGE_PATH, "")},
-                )
-            ] = selector.selector({"text": {}})
-
         # ── Toggles — grouped together at the bottom ─────────────────────────
         # Notes toggle — always shown, options override takes priority over entry.data
         notes_currently_enabled = bool(
@@ -652,6 +649,22 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
                 vol.Optional(
                     CONF_LATIN_NAME,
                     description={"suggested_value": current_latin},
+                )
+            ] = selector.selector({"text": {}})
+
+        # Image toggle — always shown so users can enable it after setup.
+        # If already enabled, also show the path field to edit the value.
+        image_currently_enabled = bool(
+            current_opts.get(CONF_ENABLE_IMAGE, entry.data.get(CONF_ENABLE_IMAGE, False))
+        )
+        schema_fields[vol.Required(CONF_ENABLE_IMAGE, default=image_currently_enabled)] = selector.selector(
+            {"boolean": {}}
+        )
+        if image_currently_enabled:
+            schema_fields[
+                vol.Optional(
+                    CONF_IMAGE_PATH,
+                    description={"suggested_value": defaults.get(CONF_IMAGE_PATH, "")},
                 )
             ] = selector.selector({"text": {}})
 

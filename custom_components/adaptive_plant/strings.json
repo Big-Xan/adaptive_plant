@@ -137,6 +137,7 @@
           "notes_enabled": "Enable notes",
           "latin_name": "Latin name",
           "enable_latin_name": "Enable latin name",
+          "enable_image": "Enable image",
           "fertilization_enabled": "Enable fertilization tracking",
           "repotting_enabled": "Enable repotting tracking",
           "moisture_sensor_enabled": "Enable moisture sensor",
