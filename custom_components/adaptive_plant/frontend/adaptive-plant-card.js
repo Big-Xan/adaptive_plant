@@ -1,4 +1,4 @@
-// Adaptive Plant Card v17
+// Adaptive Plant Card v18
 
 class AdaptivePlantCard extends HTMLElement {
   constructor() {
@@ -429,11 +429,16 @@ class AdaptivePlantCard extends HTMLElement {
       var devIds   = byDevice[devId];
       var dev      = (hass.devices && hass.devices[devId]) || {};
       var areaName = dev.area_id ? ((hass.areas && hass.areas[dev.area_id] && hass.areas[dev.area_id].name) || 'No Area') : 'No Area';
-      var find = function(s) { return devIds.find(function(id) { return id.endsWith(s); }); };
+      // Tolerate HA's `_2`/`_3` disambiguation suffix, appended to entity_ids
+      // when two plants share a name (e.g. `select.fern_health_2`). Without
+      // this, every field lookup below misses the suffixed entities and the
+      // duplicate plant renders with no status. See issue #15.
+      var matchEnd = function(id, s) { return id.endsWith(s) || id.replace(/_\d+$/, '').endsWith(s); };
+      var find = function(s) { return devIds.find(function(id) { return matchEnd(id, s); }); };
       var st   = function(s) { var fid = find(s); return fid ? hass.states[fid] : null; };
       var nwSt   = st('_next_watering');
       var nwAt   = nwSt && nwSt.attributes ? nwSt.attributes : {};
-      var hlthId = devIds.find(function(id) { return id.startsWith('select.') && id.endsWith('_health'); });
+      var hlthId = devIds.find(function(id) { return id.startsWith('select.') && matchEnd(id, '_health'); });
       var hlthSt = hlthId ? hass.states[hlthId] : null;
       var hlthAt = hlthSt && hlthSt.attributes ? hlthSt.attributes : {};
 
@@ -701,7 +706,7 @@ class AdaptivePlantCard extends HTMLElement {
         var hdr = lk ? '<div class="label-sub-header">' + self._esc(lk) + '</div>' : '';
         var rows = lps.map(function(p) {
           var isExp   = self._expanded === p.id;
-          var urgent  = self._isUrgent(p.daysWater) || self._isUrgent(p.daysFert);
+          var urgent  = self._isUrgent(p.daysWater) || self._isUrgent(p.daysFert) || p.healthCheckInOverdue;
           var showTxt = self._showText('overview');
 
           // v13: in the meta row, show moisture % instead of watering days
