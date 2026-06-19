@@ -31,6 +31,7 @@ class AdaptivePlantCard extends HTMLElement {
     this._tabActiveColor      = (config.tab_active_color !== undefined && config.tab_active_color !== null && config.tab_active_color !== '')
                                   ? config.tab_active_color : '#7cb97e';
     this._pinHoldButton  = config.pin_hold_button === true;
+    this._imageSize      = config.image_size      || 'small';   // small | medium | large
     this._labelAlign     = config.label_align     || 'left';
     this._labelPadding   = (config.label_padding !== undefined && config.label_padding !== null && config.label_padding !== '')
                              ? config.label_padding : null;
@@ -229,6 +230,10 @@ class AdaptivePlantCard extends HTMLElement {
     // avoids producing invalid CSS that breaks layout).
     return color;
   }
+
+  // Resolve the configured image-size preset to a pixel value. `small` (44px)
+  // matches the historic fixed size, so existing cards are unchanged.
+  _avatarPx() { return { small: 44, medium: 64, large: 88 }[this._imageSize] || 44; }
 
   _avatar(plant, tab) {
     var showRing  = tab && plant.health && this._showRing(tab);
@@ -845,6 +850,12 @@ class AdaptivePlantCard extends HTMLElement {
   _css(height, width) {
     var oc = this._overdueColor;
     var bg = this._showBackground;
+    // Avatar sizing derived from the image_size preset. The expanded detail
+    // panel indent tracks the avatar so detail text stays aligned under the
+    // plant name (16px row padding + avatar + 12px gap). Initials scale too.
+    var avPx       = this._avatarPx();
+    var avInitPx   = Math.round(avPx * 0.34);
+    var detailPad  = avPx + 28;
     // When the background toggle is on:
     //   - if the user set a custom card_background_color, use it directly
     //   - otherwise fall back to the HA theme's --card-background-color
@@ -884,8 +895,8 @@ class AdaptivePlantCard extends HTMLElement {
       '.label-sub-header{' + this._labelSubHeaderCss() + '}',
       '.plant-row{display:flex;align-items:center;padding:10px 16px;gap:12px;}.plant-row-click{cursor:pointer;}',
       '@media (hover:hover){.plant-row-click:hover{background:rgba(255,255,255,0.04);}}',
-      '.avatar-wrap{flex-shrink:0;}.avatar{width:44px;height:44px;border-radius:50%;overflow:hidden;background:#2a2a2a;display:flex;align-items:center;justify-content:center;transition:box-shadow 0.2s;}',
-      '.avatar img{width:100%;height:100%;object-fit:cover;}.av-init{font-size:15px;font-weight:700;color:#7cb97e;}',
+      '.avatar-wrap{flex-shrink:0;}.avatar{width:' + avPx + 'px;height:' + avPx + 'px;border-radius:50%;overflow:hidden;background:#2a2a2a;display:flex;align-items:center;justify-content:center;transition:box-shadow 0.2s;}',
+      '.avatar img{width:100%;height:100%;object-fit:cover;}.av-init{font-size:' + avInitPx + 'px;font-weight:700;color:#7cb97e;}',
       '.plant-info{flex:1;min-width:0;}.plant-name{font-size:15px;font-weight:500;display:flex;align-items:center;gap:6px;}',
       '.plant-latin{font-style:italic;line-height:1.3;}',
       '.plant-meta{display:flex;gap:8px;margin-top:3px;flex-wrap:wrap;align-items:center;}',
@@ -901,7 +912,7 @@ class AdaptivePlantCard extends HTMLElement {
       '.btn-water{background:rgba(100,180,255,0.15);color:#64b4ff;}.btn-water:hover{background:rgba(100,180,255,0.3);}',
       '.btn-snooze{background:rgba(255,255,255,0.08);color:#aaaaaa;}.btn-snooze:hover{background:rgba(255,255,255,0.16);}',
       '.btn-fert{background:rgba(124,185,126,0.15);color:#7cb97e;}.btn-fert:hover{background:rgba(124,185,126,0.3);}',
-      '.plant-detail{padding:4px 16px 12px 72px;border-bottom:1px solid rgba(255,255,255,0.06);}',
+      '.plant-detail{padding:4px 16px 12px ' + detailPad + 'px;border-bottom:1px solid rgba(255,255,255,0.06);}',
       '.detail-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;font-size:13px;}',
       '.detail-label{color:var(--secondary-text-color,#888);flex-shrink:0;margin-right:12px;}.detail-value{font-weight:500;}',
       '.health-select{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:var(--primary-text-color,#e5e5e5);font-size:13px;padding:4px 8px;cursor:pointer;outline:none;}',
@@ -1020,6 +1031,14 @@ class AdaptivePlantCardEditor extends HTMLElement {
           this._colorField('Active tab color',      'tab_active_color',      this._get('tab_active_color',      '#7cb97e')) +
         '</div>' +
         '<div class="field-hint">Card background colour only applies when <em>Show card background</em> is on. Active tab colour sets the text and underline of the selected tab — useful when your card background reduces contrast against the default green.</div>' +
+      '</div>' +
+      '<div class="field-group"><div class="field-label">Plant image size</div>' +
+        '<div class="tri-btns" style="gap:6px;">' +
+          '<button class="tri-btn ' + (this._get('image_size','small') === 'small'  ? 'active-def' : '') + '" data-tri="image_size" data-val="small">Small</button>'  +
+          '<button class="tri-btn ' + (this._get('image_size','small') === 'medium' ? 'active-def' : '') + '" data-tri="image_size" data-val="medium">Medium</button>' +
+          '<button class="tri-btn ' + (this._get('image_size','small') === 'large'  ? 'active-def' : '') + '" data-tri="image_size" data-val="large">Large</button>'  +
+        '</div>' +
+        '<div class="field-hint" style="margin-top:6px;">Enlarges the plant photo (and initials placeholder) in all tabs. Larger images make each row taller.</div>' +
       '</div>' +
       '<div class="field-group"><div class="field-label">Moisture sensor options</div><div class="toggle-row">' +
         this._toggle('Hide moisture-tracked plants from Upcoming', 'exclude_moisture_from_upcoming', this._get('exclude_moisture_from_upcoming', false)) +

@@ -256,6 +256,7 @@ show_background: true     # set false for transparent/frosted glass themes
 card_background_color: #1c1c1e # optional — hex value shown represents the default
 tab_active_color: #7cb97e # optional — hex value shown represents the default
 pin_hold_button: false    # set true to fix hold bar to bottom of card
+image_size: small         # small | medium | large — plant photo size
 # Moisture sensor options
 exclude_moisture_from_upcoming: false  # hide moisture-tracked plants from Upcoming tab
 show_moisture_in_overview: false       # show live moisture % instead of watering days in Overview
