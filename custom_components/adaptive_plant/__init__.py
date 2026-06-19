@@ -16,6 +16,7 @@ from homeassistant.helpers.event import (
 
 from .const import (
     CONF_AREA,
+    CONF_IMAGE_PATH,
     DEFAULT_HEALTH,
     DOMAIN,
     HEALTH_OPTIONS,
@@ -36,6 +37,7 @@ _LOGGER = logging.getLogger(__name__)
 _CARD_URL = f"/{DOMAIN}/adaptive-plant-card.js"
 _CARD_PATH = Path(__file__).parent / "frontend" / "adaptive-plant-card.js"
 _BLUEPRINTS_SRC = Path(__file__).parent / "blueprints" / "automation"
+_OWNED_IMAGE_PREFIX = f"/local/{DOMAIN}/"
 
 
 async def _async_register_frontend(hass: HomeAssistant) -> None:
@@ -213,3 +215,20 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unloaded:
         hass.data[DOMAIN].pop(entry.entry_id, None)
     return unloaded
+
+
+def _delete_owned_image(config_dir: str, image_path: str) -> None:
+    """Blocking: best-effort delete of an owned image file under www/adaptive_plant/."""
+    filename = image_path[len(_OWNED_IMAGE_PREFIX):]
+    full_path = Path(config_dir) / "www" / DOMAIN / filename
+    try:
+        full_path.unlink()
+    except OSError:
+        pass
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Clean up an owned uploaded image when the config entry is removed."""
+    image_path = entry.options.get(CONF_IMAGE_PATH, entry.data.get(CONF_IMAGE_PATH))
+    if image_path and image_path.startswith(_OWNED_IMAGE_PREFIX):
+        await hass.async_add_executor_job(_delete_owned_image, hass.config.config_dir, image_path)

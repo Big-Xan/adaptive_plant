@@ -12,6 +12,8 @@ CONF_ENABLE_FERTILIZATION = "enable_fertilization"
 CONF_ENABLE_NOTES = "enable_notes"
 CONF_ENABLE_IMAGE = "enable_image"
 CONF_IMAGE_PATH = "image_path"
+# Transient, form-only field for the file-upload selector — never persisted.
+CONF_IMAGE_UPLOAD = "image_upload"
 CONF_MOISTURE_SENSOR = "moisture_sensor"
 CONF_DRY_THRESHOLD = "dry_threshold"
 CONF_WET_THRESHOLD = "wet_threshold"
