@@ -67,7 +67,8 @@ entry/plant afterwards (**Settings → Devices & Services → Adaptive Plant →
 - Attach a `/local/` image path to display on dashboard cards. Can be changed via configuration after entry is created. I recommend creating a folder titled 'adaptive_plant' in your `/www/` folder and uploading your plant images there.
 > **Example image pathway (w/ folder created) for card config:**  `/local/adaptive_plant/monstera.png`
 
-> **Example image pathway (without folder, uploaded directly into `/www/`) for card config:**  `/local/monstera.png` 
+> **Example image pathway (without folder, uploaded directly into `/www/`) for card config:**  `/local/monstera.png`
+- Image **size** (px) and **shape** (circle / square, softly rounded) are configurable on the companion card via the visual editor or YAML. Set `image_size: 0` to hide plant photos entirely for clean text-only rows. The health ring follows the chosen shape.
 
 
 ### 🏠 Area & Label Support
@@ -256,6 +257,8 @@ show_background: true     # set false for transparent/frosted glass themes
 card_background_color: #1c1c1e # optional — hex value shown represents the default
 tab_active_color: #7cb97e # optional — hex value shown represents the default
 pin_hold_button: false    # set true to fix hold bar to bottom of card
+image_size: 44            # plant photo / avatar size in px (0–100, default 44; 0 hides the image)
+image_shape: circle       # circle | square — square uses softly rounded corners; health ring follows
 # Moisture sensor options
 exclude_moisture_from_upcoming: false  # hide moisture-tracked plants from Upcoming tab
 show_moisture_in_overview: false       # show live moisture % instead of watering days in Overview
