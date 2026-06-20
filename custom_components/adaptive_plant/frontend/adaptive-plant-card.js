@@ -1,4 +1,4 @@
-// Adaptive Plant Card v18
+// Adaptive Plant Card v19
 
 class AdaptivePlantCard extends HTMLElement {
   constructor() {
@@ -54,6 +54,18 @@ class AdaptivePlantCard extends HTMLElement {
     this._latinNameColor      = config.latin_name_color  || null;
     this._latinNamePadding    = (config.latin_name_padding !== undefined && config.latin_name_padding !== null && config.latin_name_padding !== '')
                                   ? config.latin_name_padding : null;
+
+    // v19 options — configurable plant image (avatar) size & shape.
+    // image_size is a pixel value: default 44 (the historic fixed size),
+    // clamped to 0–100. 0 hides the avatar entirely (image and initials),
+    // giving text-only rows. image_shape: 'circle' (default) | 'square'
+    // (softly rounded corners); the health ring follows the shape.
+    var _imgSize = parseInt(config.image_size, 10);
+    if (isNaN(_imgSize)) _imgSize = 44;
+    if (_imgSize < 0)    _imgSize = 0;
+    if (_imgSize > 100)  _imgSize = 100;
+    this._imageSize  = _imgSize;
+    this._imageShape = config.image_shape === 'square' ? 'square' : 'circle';
 
     var ic = config.icons || {};
     this._icons = {
@@ -231,6 +243,7 @@ class AdaptivePlantCard extends HTMLElement {
   }
 
   _avatar(plant, tab) {
+    if (this._imageSize === 0) return '';   // image disabled — text-only rows
     var showRing  = tab && plant.health && this._showRing(tab);
     var ringColor = showRing ? this._healthColor(plant.health) : null;
     var rw        = this._health.ring_width;
@@ -845,6 +858,15 @@ class AdaptivePlantCard extends HTMLElement {
   _css(height, width) {
     var oc = this._overdueColor;
     var bg = this._showBackground;
+    // Avatar sizing derived from image_size. avInitPx scales the initials
+    // placeholder font; detailPad keeps the Overview expanded-detail text
+    // aligned under the plant name. When the avatar is hidden (size 0) the
+    // detail panel falls back to the row's 16px left padding. avRadius makes
+    // the health ring (a box-shadow on .avatar) follow the chosen shape.
+    var avPx      = this._imageSize;
+    var avInitPx  = Math.round(avPx * 0.34);
+    var avRadius  = this._imageShape === 'square' ? Math.round(avPx * 0.22) + 'px' : '50%';
+    var detailPad = avPx > 0 ? (avPx + 28) : 16;
     // When the background toggle is on:
     //   - if the user set a custom card_background_color, use it directly
     //   - otherwise fall back to the HA theme's --card-background-color
@@ -884,8 +906,8 @@ class AdaptivePlantCard extends HTMLElement {
       '.label-sub-header{' + this._labelSubHeaderCss() + '}',
       '.plant-row{display:flex;align-items:center;padding:10px 16px;gap:12px;}.plant-row-click{cursor:pointer;}',
       '@media (hover:hover){.plant-row-click:hover{background:rgba(255,255,255,0.04);}}',
-      '.avatar-wrap{flex-shrink:0;}.avatar{width:44px;height:44px;border-radius:50%;overflow:hidden;background:#2a2a2a;display:flex;align-items:center;justify-content:center;transition:box-shadow 0.2s;}',
-      '.avatar img{width:100%;height:100%;object-fit:cover;}.av-init{font-size:15px;font-weight:700;color:#7cb97e;}',
+      '.avatar-wrap{flex-shrink:0;}.avatar{width:' + avPx + 'px;height:' + avPx + 'px;border-radius:' + avRadius + ';overflow:hidden;background:#2a2a2a;display:flex;align-items:center;justify-content:center;transition:box-shadow 0.2s;}',
+      '.avatar img{width:100%;height:100%;object-fit:cover;}.av-init{font-size:' + avInitPx + 'px;font-weight:700;color:#7cb97e;}',
       '.plant-info{flex:1;min-width:0;}.plant-name{font-size:15px;font-weight:500;display:flex;align-items:center;gap:6px;}',
       '.plant-latin{font-style:italic;line-height:1.3;}',
       '.plant-meta{display:flex;gap:8px;margin-top:3px;flex-wrap:wrap;align-items:center;}',
@@ -901,7 +923,7 @@ class AdaptivePlantCard extends HTMLElement {
       '.btn-water{background:rgba(100,180,255,0.15);color:#64b4ff;}.btn-water:hover{background:rgba(100,180,255,0.3);}',
       '.btn-snooze{background:rgba(255,255,255,0.08);color:#aaaaaa;}.btn-snooze:hover{background:rgba(255,255,255,0.16);}',
       '.btn-fert{background:rgba(124,185,126,0.15);color:#7cb97e;}.btn-fert:hover{background:rgba(124,185,126,0.3);}',
-      '.plant-detail{padding:4px 16px 12px 72px;border-bottom:1px solid rgba(255,255,255,0.06);}',
+      '.plant-detail{padding:4px 16px 12px ' + detailPad + 'px;border-bottom:1px solid rgba(255,255,255,0.06);}',
       '.detail-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;font-size:13px;}',
       '.detail-label{color:var(--secondary-text-color,#888);flex-shrink:0;margin-right:12px;}.detail-value{font-weight:500;}',
       '.health-select{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:var(--primary-text-color,#e5e5e5);font-size:13px;padding:4px 8px;cursor:pointer;outline:none;}',
@@ -1020,6 +1042,18 @@ class AdaptivePlantCardEditor extends HTMLElement {
           this._colorField('Active tab color',      'tab_active_color',      this._get('tab_active_color',      '#7cb97e')) +
         '</div>' +
         '<div class="field-hint">Card background colour only applies when <em>Show card background</em> is on. Active tab colour sets the text and underline of the selected tab — useful when your card background reduces contrast against the default green.</div>' +
+      '</div>' +
+      '<div class="field-group"><div class="field-label">Plant image</div>' +
+        '<div class="field-row">' +
+          this._textField('Size (px · 0–100 · 0 hides)', 'image_size', this._get('image_size', ''), 'e.g. 44', 'number') +
+          '<div class="text-field"><div class="field-sublabel">Shape</div>' +
+            '<div class="tri-btns" style="gap:6px;">' +
+              '<button class="tri-btn ' + (this._get('image_shape','circle') === 'circle' ? 'active-def' : '') + '" data-tri="image_shape" data-val="circle">Circle</button>' +
+              '<button class="tri-btn ' + (this._get('image_shape','circle') === 'square' ? 'active-def' : '') + '" data-tri="image_shape" data-val="square">Square</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="field-hint">Sets the plant photo (and initials placeholder) size across all three tabs. Default 44, max 100. Square uses softly rounded corners and the health ring follows the shape. Set 0 to hide the image entirely for clean text-only rows.</div>' +
       '</div>' +
       '<div class="field-group"><div class="field-label">Moisture sensor options</div><div class="toggle-row">' +
         this._toggle('Hide moisture-tracked plants from Upcoming', 'exclude_moisture_from_upcoming', this._get('exclude_moisture_from_upcoming', false)) +
