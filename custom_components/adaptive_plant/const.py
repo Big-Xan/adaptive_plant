@@ -18,6 +18,8 @@ CONF_WET_THRESHOLD = "wet_threshold"
 CONF_LABEL = "label"
 CONF_ENABLE_LATIN_NAME = "enable_latin_name"
 CONF_LATIN_NAME = "latin_name"
+CONF_ENABLE_CARE_INSTRUCTIONS = "enable_care_instructions"
+CONF_CARE_INSTRUCTIONS = "care_instructions"
 CONF_NOTES_ENABLED = "notes_enabled"
 CONF_ENABLE_REPOTTING = "enable_repotting"
 

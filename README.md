@@ -63,6 +63,21 @@ entry/plant afterwards (**Settings → Devices & Services → Adaptive Plant →
 - Free-form text field stored per plant
 - Can be enabled or disabled at any time via Configure — no restart required
 
+### 📖 Care Instructions (optional)
+- Store longer, free-form care guidance per plant — light, watering, soil, feeding,
+  repotting tips, whatever you've gathered for that species
+- Handles long, multi-line text — where **Notes** is meant for short jottings,
+  Care Instructions is for full write-ups
+- Basic formatting: wrap text in `**double asterisks**` for bold headings, and
+  line breaks are preserved
+- Edited in the integration's settings (**Configure**) and shown read-only in the
+  expanded plant detail on the companion card's Overview tab
+- Enable or disable per plant at any time via Configure — no restart required
+
+> **Tip:** Adaptive Plant won't tell you *how* to care for a plant (see the [FAQ](#-faq))
+> — Care Instructions is simply where you record the guidance *you've* gathered, so it's
+> on hand right next to the plant.
+
 ### 🖼️ Plant Image (optional)
 - Attach a `/local/` image path to display on dashboard cards. Can be changed via configuration after entry is created. I recommend creating a folder titled 'adaptive_plant' in your `/www/` folder and uploading your plant images there.
 > **Example image pathway (w/ folder created) for card config:**  `/local/adaptive_plant/monstera.png`
@@ -179,7 +194,7 @@ Hard refresh your browser (Ctrl+Shift+R / Cmd+Shift+R) after installing or updat
 
 - **Today tab** — plants due or overdue, grouped by area and label. Mark watered, mark fertilized, or snooze directly from the card. Hold the button at the bottom to complete all tasks at once. The snooze button remains visible until all of a plant's tasks for the day are resolved.
 - **Upcoming tab** — future waterings and fertilizations with a configurable day cutoff. Plants with both tasks due on the same day appear as a single combined row. Mark tasks early directly from the card.
-- **Overview tab** — all plants grouped by area and label, with a configurable sort order (alphabetical, health, or days until watering). Expand any plant to see next watering/fertilization dates, edit health, add notes, confirm health check-in, and mark tasks complete.
+- **Overview tab** — all plants grouped by area and label, with a configurable sort order (alphabetical, health, or days until watering). Expand any plant to see next watering/fertilization dates, edit health, add notes, view care instructions, confirm health check-in, and mark tasks complete.
 - **Labels** — plants with a label assigned are grouped under a sublabel header within their area, across all tabs
 - **Health ring** — colored ring around each plant avatar indicating health status, configurable per tab
 - **Confirm Health button** — always visible in the Overview expanded detail. Shows a heart icon and reads "Update Due" when a health check-in is overdue. Color configurable.
@@ -409,8 +424,8 @@ the card.
 **What happens if I delete a plant and re-add it?**
 
 All state is stored in the config entry — last watered date, next
-watering, fertilization dates, repotting history, notes, health, and the
-adapted watering interval. Deleting the entry permanently deletes all of
+watering, fertilization dates, repotting history, notes, care instructions,
+health, and the adapted watering interval. Deleting the entry permanently deletes all of
 that. Re-adding the plant starts completely fresh.
 
 If you need to change a setting, always use **Configure** rather than

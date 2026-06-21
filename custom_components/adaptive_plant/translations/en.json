@@ -137,6 +137,8 @@
           "notes_enabled": "Enable notes",
           "latin_name": "Latin name",
           "enable_latin_name": "Enable latin name",
+          "enable_care_instructions": "Enable care instructions",
+          "care_instructions": "Care instructions",
           "enable_image": "Enable image",
           "fertilization_enabled": "Enable fertilization tracking",
           "repotting_enabled": "Enable repotting tracking",
@@ -146,6 +148,8 @@
         "data_description": {
           "label": "Optional sublabel to group plants within an area (e.g. Left shelf, Window sill). Leave blank or enter 'null' to remove.",
           "notes_enabled": "Toggle to enable or disable the notes field for this plant.",
+          "enable_care_instructions": "Toggle to enable or disable care instructions for this plant.",
+          "care_instructions": "Free-form care notes shown read-only on the card. **bold** and line breaks are supported.",
           "fertilization_enabled": "Toggle to enable or disable fertilization tracking. Previous dates are preserved when re-enabled.",
           "repotting_enabled": "Toggle to enable or disable repotting tracking. Previous dates are preserved when re-enabled.",
           "moisture_sensor_enabled": "Toggle off to remove the moisture sensor and clear all thresholds.",

@@ -15,8 +15,10 @@ from homeassistant.core import HomeAssistant
 
 from .const import (
     CONF_AREA,
+    CONF_CARE_INSTRUCTIONS,
     CONF_DRY_THRESHOLD,
     CONF_EARLY_WATERING_THRESHOLD,
+    CONF_ENABLE_CARE_INSTRUCTIONS,
     CONF_ENABLE_FERTILIZATION,
     CONF_ENABLE_IMAGE,
     CONF_ENABLE_LATIN_NAME,
@@ -132,6 +134,12 @@ class PlantData:
         return bool(self._entry.data.get(CONF_ENABLE_LATIN_NAME, False))
 
     @property
+    def enable_care_instructions(self) -> bool:
+        # Care instructions are edited only in the options flow, so the value
+        # lives solely in options — no entry.data fallback needed.
+        return bool(self._entry.options.get(CONF_ENABLE_CARE_INSTRUCTIONS, False))
+
+    @property
     def enable_repotting(self) -> bool:
         # Options override takes precedence — allows toggling after setup.
         if CONF_REPOTTING_ENABLED in self._entry.options:
@@ -147,6 +155,13 @@ class PlantData:
             return val.strip() if val and val.strip() else None
         val = self._entry.data.get(CONF_LATIN_NAME)
         return val.strip() if val and val.strip() else None
+
+    @property
+    def care_instructions(self) -> str | None:
+        # Stored only in options. Return the raw value (no strip) so multiline
+        # formatting survives; treat all-whitespace as "no value".
+        val = self._entry.options.get(CONF_CARE_INSTRUCTIONS)
+        return val if (val and val.strip()) else None
 
     @property
     def enable_image(self) -> bool:

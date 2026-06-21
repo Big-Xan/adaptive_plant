@@ -196,6 +196,16 @@ class AdaptivePlantCard extends HTMLElement {
       .replace(/'/g, '&#39;');
   }
 
+  // ── Render care instructions: escape first, then a tiny safe subset ───────
+  // Runs _esc() first so any real HTML in the user's text is neutralised; only
+  // our own literal <b>/<br> tags are added afterwards. Supports **bold** and
+  // line breaks — intentionally not full markdown.
+  _careHtml(s) {
+    return this._esc(s)
+      .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')   // **bold** → bold
+      .replace(/\n/g, '<br>');                  // keep line breaks
+  }
+
   // ── Build a translucent background from any CSS color string ─────────────
   // Replaces the prior `color + '26'` / `color + '22'` string-concat hack,
   // which silently produced invalid CSS for non-hex inputs (named colors,
@@ -494,6 +504,7 @@ class AdaptivePlantCard extends HTMLElement {
         moistureVal:          moistureVal,   // float or null
         hasMoisture:          moistureVal !== null,
         latinName:            latinName,     // string or null
+        careInstructions:     nwAt.care_instructions || null,
       };
     }).sort(function(a, b) { return a.name.localeCompare(b.name); });
   }
@@ -764,6 +775,14 @@ class AdaptivePlantCard extends HTMLElement {
                 '</div></div>';
           }
 
+          // ── Care instructions section (read-only, **bold** + line breaks) ──
+          var careHtml = '';
+          if (p.careInstructions) {
+            careHtml = '<div class="care-section"><span class="detail-label">Care</span>' +
+              '<div class="care-body">' + self._careHtml(p.careInstructions) + '</div>' +
+            '</div>';
+          }
+
           // ── Repotted section ──────────────────────────────────────────────
           // Last repotted date: always visible when plant has repotting configured
           // Repotted-on date input: hidden when show_repotting is off
@@ -792,6 +811,7 @@ class AdaptivePlantCard extends HTMLElement {
                 hopts.map(function(o) { return '<option value="' + o + '"' + (o === p.health ? ' selected' : '') + '>' + self._capitalise(o) + '</option>'; }).join('') +
               '</select></div>' : '') +
             notesHtml +
+            careHtml +
             '<div class="detail-actions">' +
               (p.btnWater         ? '<button class="detail-btn btn-water"  data-entity="' + p.btnWater  + '">' + self._renderIcon(self._icons.water,     self._icons.water_color,     '15px') + ' Mark Watered</button>'    : '') +
               (p.btnFert          ? '<button class="detail-btn btn-fert"   data-entity="' + p.btnFert   + '">' + self._renderIcon(self._icons.fertilize, self._icons.fertilize_color, '15px') + ' Mark Fertilized</button>' : '') +
@@ -933,6 +953,8 @@ class AdaptivePlantCard extends HTMLElement {
       '.notes-input{width:100%;box-sizing:border-box;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);border-radius:8px;color:var(--primary-text-color,#e5e5e5);font-size:13px;padding:8px;resize:vertical;min-height:72px;outline:none;font-family:inherit;}',
       '.notes-actions{display:flex;gap:8px;margin-top:6px;}.notes-save,.notes-cancel{padding:5px 14px;border-radius:16px;border:none;font-size:12px;font-weight:600;cursor:pointer;}',
       '.notes-save{background:#7cb97e;color:#fff;}.notes-cancel{background:rgba(255,255,255,0.08);color:#aaa;}',
+      '.care-section{margin:6px 0;font-size:13px;}.care-section .detail-label{display:block;margin-bottom:4px;}',
+      '.care-body{font-size:13px;line-height:1.45;color:var(--primary-text-color,#e5e5e5);}',
       '.detail-actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;}',
       '.detail-btn{padding:7px 14px;border-radius:20px;border:none;cursor:pointer;font-size:13px;font-weight:500;display:inline-flex;align-items:center;gap:5px;transition:filter 0.15s;}',
       '.detail-btn.btn-water{background:rgba(100,180,255,0.15);color:#64b4ff;}.detail-btn.btn-fert{background:rgba(124,185,126,0.15);color:#7cb97e;}',
