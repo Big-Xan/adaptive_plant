@@ -230,8 +230,9 @@ latin_name_color: '#9ba8b4'             # cool gray-blue, low-contrast on purpos
 latin_name_padding: 2
 ```
 
-**Visual editor as of v17 — every option is configurable without touching YAML. Customization is virtually endless:**
-<img width="1504" height="2912" alt="BIG(20)" src="https://github.com/user-attachments/assets/beef0a18-5618-46ae-aea2-09907dcf7cd0" />
+**Visual editor as of v19.2 — every option is configurable without touching YAML. Customization is virtually endless:**
+<img width="1514" height="2912" alt="BIG(28)" src="https://github.com/user-attachments/assets/0188265c-fe8d-4ae0-9198-534694ab2a46" />
+
 
 
 
