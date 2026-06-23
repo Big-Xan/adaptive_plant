@@ -1,4 +1,4 @@
-// Adaptive Plant Card v19
+// Adaptive Plant Card v19.1
 
 class AdaptivePlantCard extends HTMLElement {
   constructor() {
@@ -43,6 +43,15 @@ class AdaptivePlantCard extends HTMLElement {
     // v13 options
     this._excludeMoistureFromUpcoming = config.exclude_moisture_from_upcoming === true;
     this._showMoistureInOverview      = config.show_moisture_in_overview      === true;
+
+    // v19.1 options — per-tab moisture % display (previously overview-only).
+    // show_moisture_in_overview is preserved for backward compatibility; the
+    // today/upcoming siblings extend the same "show % instead of watering
+    // days" behaviour to the other tabs. Exclusion from Upcoming still wins:
+    // a plant hidden via exclude_moisture_from_upcoming never reaches the
+    // Upcoming tab regardless of show_moisture_in_upcoming.
+    this._showMoistureInToday    = config.show_moisture_in_today    === true;
+    this._showMoistureInUpcoming = config.show_moisture_in_upcoming === true;
 
     // v15 options
     this._showRepotting       = config.show_repotting       !== false;
@@ -174,6 +183,11 @@ class AdaptivePlantCard extends HTMLElement {
     if (tab === 'overview') return true;
     return this._health.text;
   }
+  _showMoisture(tab) {
+    if (tab === 'today')    return this._showMoistureInToday;
+    if (tab === 'upcoming') return this._showMoistureInUpcoming;
+    return this._showMoistureInOverview;
+  }
   _healthColor(h) { return this._health.colors[h] || '#888'; }
   _capitalise(str) {
     if (!str) return '';
@@ -295,6 +309,17 @@ class AdaptivePlantCard extends HTMLElement {
       this._renderIcon(this._icons.water, color, '12px') +
       ' <span style="color:' + color + ';font-weight:600;">' + pct + '%</span>' +
     '</span>';
+  }
+
+  // ── Moisture chip for Today / Upcoming task rows ──────────────────────────
+  // Mirrors the water chip's pill styling (background + full-width) so a
+  // moisture reading reads as a proper labelled chip alongside the fert chip,
+  // rather than the bare meta-row pill used on Overview. Size param matches
+  // each tab's chip icon (14px Today, 13px Upcoming).
+  _moistureChip(p, size) {
+    var pct  = Math.round(p.moistureVal);
+    var icon = this._renderIcon(this._icons.water, this._icons.water_color, size || '14px');
+    return '<span class="chip chip-water">' + icon + ' ' + pct + '% moisture</span>';
   }
 
   _bootstrapShell() {
@@ -598,7 +623,7 @@ class AdaptivePlantCard extends HTMLElement {
               '<div class="plant-name">' + self._esc(p.name) + '</div>' +
               self._latinNameHtml(p) +
               (self._showText('today') && p.health ? '<div class="plant-meta"><span class="health-badge" style="color:' + self._healthColor(p.health) + '">' + self._capitalise(p.health) + '</span></div>' : '') +
-              '<div class="chips">' + (wu ? self._waterChip(p.daysWater) : '') + (fu ? self._fertChip(p.daysFert) : '') + '</div>' +
+              '<div class="chips">' + (wu ? (self._showMoisture('today') && p.hasMoisture ? self._moistureChip(p, '14px') : self._waterChip(p.daysWater)) : '') + (fu ? self._fertChip(p.daysFert) : '') + '</div>' +
             '</div>' +
             '<div class="row-actions">' +
               ((wu || fu) && p.btnSnooze ? self._actionBtn('btn-snooze', p.btnSnooze, 'snooze',         'snooze_color',         "Snooze today's tasks") : '') +
@@ -672,7 +697,7 @@ class AdaptivePlantCard extends HTMLElement {
                 self._latinNameHtml(p) +
                 (self._showText('upcoming') && p.health ? '<div class="plant-meta"><span class="health-badge" style="color:' + self._healthColor(p.health) + '">' + self._capitalise(p.health) + '</span></div>' : '') +
                 '<div class="chips">' +
-                  (pg.water ? '<span class="chip chip-water">' + self._renderIcon(self._icons.water,     self._icons.water_color,     '13px') + ' ' + pg.water.lbl + '</span>' : '') +
+                  (pg.water ? (self._showMoisture('upcoming') && p.hasMoisture ? self._moistureChip(p, '13px') : '<span class="chip chip-water">' + self._renderIcon(self._icons.water,     self._icons.water_color,     '13px') + ' ' + pg.water.lbl + '</span>') : '') +
                   (pg.fert  ? '<span class="chip chip-fert">'  + self._renderIcon(self._icons.fertilize, self._icons.fertilize_color, '13px') + ' ' + pg.fert.lbl  + '</span>' : '') +
                 '</div>' +
               '</div>' +
@@ -724,7 +749,7 @@ class AdaptivePlantCard extends HTMLElement {
 
           // v13: in the meta row, show moisture % instead of watering days
           var waterMeta;
-          if (self._showMoistureInOverview && p.hasMoisture) {
+          if (self._showMoisture('overview') && p.hasMoisture) {
             waterMeta = self._moisturePill(p);
           } else if (p.daysWater) {
             waterMeta = '<span class="meta-item">' + self._renderIcon(self._icons.water, self._icons.water_color, '12px') + ' ' + p.daysWater + '</span>';
@@ -1057,9 +1082,11 @@ class AdaptivePlantCardEditor extends HTMLElement {
       '</div>' +
       '<div class="field-group"><div class="field-label">Moisture sensor options</div><div class="toggle-row">' +
         this._toggle('Hide moisture-tracked plants from Upcoming', 'exclude_moisture_from_upcoming', this._get('exclude_moisture_from_upcoming', false)) +
+        this._toggle('Show moisture % instead of watering days in Today', 'show_moisture_in_today', this._get('show_moisture_in_today', false)) +
+        this._toggle('Show moisture % instead of watering days in Upcoming', 'show_moisture_in_upcoming', this._get('show_moisture_in_upcoming', false)) +
         this._toggle('Show moisture % instead of watering days in Overview', 'show_moisture_in_overview', this._get('show_moisture_in_overview', false)) +
       '</div>' +
-        '<div class="field-hint">These options only affect plants with an active moisture sensor reporting a value. Plants without a sensor are unaffected.</div>' +
+        '<div class="field-hint">These options only affect plants with an active moisture sensor reporting a value. Plants without a sensor are unaffected. Hiding moisture plants from Upcoming takes priority and overrides the Upcoming moisture display.</div>' +
       '</div>' +
       '<div class="field-group"><div class="field-label">Repotting</div><div class="toggle-row">' +
         this._toggle('Show Mark Repotting button & date input', 'show_repotting', this._get('show_repotting', true)) +
