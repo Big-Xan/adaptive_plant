@@ -34,6 +34,7 @@ from .const import (
     CONF_SNOOZE_THRESHOLD,
     CONF_WET_THRESHOLD,
     DEFAULT_EARLY_WATERING_THRESHOLD,
+    DEFAULT_FERT_SYNC_WINDOW,
     DEFAULT_FERTILIZATION_INTERVAL,
     DEFAULT_HEALTH,
     DEFAULT_HEALTH_PROMPT_INTERVAL,
@@ -42,6 +43,7 @@ from .const import (
     HEALTH_OPTIONS,
     NOTIFICATION_ID_PREFIX,
     OPT_FERTILIZATION_INTERVAL,
+    OPT_FERT_SYNC_WINDOW,
     OPT_WATERING_INTERVAL,
     STATE_EARLY_WATERING_COUNT,
     STATE_HEALTH,
@@ -207,6 +209,20 @@ class PlantData:
             self._entry.options.get(
                 OPT_FERTILIZATION_INTERVAL,
                 self._entry.data.get(OPT_FERTILIZATION_INTERVAL, DEFAULT_FERTILIZATION_INTERVAL),
+            )
+        )
+
+    @property
+    def fertilization_sync_window(self) -> int:
+        """Days within which marking watered snaps fertilization onto the watering day.
+
+        0 disables the feature. Options-first with an entry.data fallback,
+        mirroring the interval properties.
+        """
+        return int(
+            self._entry.options.get(
+                OPT_FERT_SYNC_WINDOW,
+                self._entry.data.get(OPT_FERT_SYNC_WINDOW, DEFAULT_FERT_SYNC_WINDOW),
             )
         )
 
@@ -383,14 +399,41 @@ class PlantData:
                 )
 
         new_next = (today + timedelta(days=interval)).isoformat()
-        await self._persist({
+
+        updates = {
             STATE_LAST_WATERED: today_str,
             STATE_NEXT_WATERING: new_next,
             STATE_EARLY_WATERING_COUNT: early_count,
             STATE_SNOOZE_COUNT: snooze_count,
             STATE_SNOOZED_THIS_PERIOD: False,
             OPT_WATERING_INTERVAL: interval,
-        })
+        }
+
+        # ── Fertilization sync ──────────────────────────────────────────────
+        # If the freshly-scheduled watering day falls within the configured
+        # window of an upcoming fertilization date, snap fertilization onto the
+        # watering day so both tasks land together ("fertilizer in the watering
+        # can"). Compares the two real dates at water time, so it tracks adaptive
+        # interval changes and snoozes naturally. Excluded for moisture-sensor
+        # plants (no dependable schedule), and only ever moves a *future*
+        # fertilization — never delays one already due, and avoids chasing.
+        window = self.fertilization_sync_window
+        if self.enable_fertilization and not self.moisture_sensor and window > 0:
+            nf = self.next_fertilized
+            if nf:
+                try:
+                    nf_date = date.fromisoformat(nf)
+                    water_date = today + timedelta(days=interval)
+                    if nf_date > today and abs((water_date - nf_date).days) <= window:
+                        updates[STATE_NEXT_FERTILIZED] = new_next
+                        _LOGGER.debug(
+                            "%s: fertilization within %d day(s) of watering — snapping to %s",
+                            self.plant_name, window, new_next,
+                        )
+                except ValueError:
+                    pass
+
+        await self._persist(updates)
 
     async def set_watering_interval(self, days: int) -> None:
         await self._persist({OPT_WATERING_INTERVAL: int(days)})
