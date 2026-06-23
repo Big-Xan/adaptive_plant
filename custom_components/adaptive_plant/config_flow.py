@@ -12,8 +12,10 @@ from homeassistant.helpers import selector
 
 from .const import (
     CONF_AREA,
+    CONF_CARE_INSTRUCTIONS,
     CONF_DRY_THRESHOLD,
     CONF_EARLY_WATERING_THRESHOLD,
+    CONF_ENABLE_CARE_INSTRUCTIONS,
     CONF_ENABLE_FERTILIZATION,
     CONF_ENABLE_IMAGE,
     CONF_ENABLE_LATIN_NAME,
@@ -480,6 +482,32 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
                 # Toggle off — remove stored latin name
                 cleaned.pop(CONF_LATIN_NAME, None)
 
+            # Care instructions toggle — write the flag explicitly. The stored
+            # text is preserved across a disable→enable cycle (like the fert and
+            # repot dates), so a user can turn the section off and back on without
+            # retyping their notes.
+            #
+            # The care text field is only rendered when care was ALREADY enabled
+            # (see `care_currently_enabled` in the schema builder below), so we
+            # overwrite the stored text only when care was on BOTH before and
+            # after this submit — the one case where the field was shown and its
+            # value, empty or not, is authoritative. Branching on the *stored*
+            # state rather than key-presence is essential: HA drops an emptied
+            # Optional text field (suggested_value, no default) from user_input
+            # entirely, so a clear-while-enabled and a re-enable both arrive with
+            # the key absent and must be told apart by something else. The old
+            # `in user_input` guard conflated them and let the merge resurface
+            # the stored value on clear. An explicit "" written here survives the
+            # cleanup loop because CONF_CARE_INSTRUCTIONS is in _skip_clear. The
+            # 2000-char cap is enforced here rather than on the text selector —
+            # HA's TextSelector has no `max` key, so passing one 400s the form.
+            care_was_enabled = bool(current_opts.get(CONF_ENABLE_CARE_INSTRUCTIONS, False))
+            care_enabled = bool(user_input.get(CONF_ENABLE_CARE_INSTRUCTIONS, False))
+            cleaned[CONF_ENABLE_CARE_INSTRUCTIONS] = care_enabled
+            if care_enabled and care_was_enabled:
+                raw_care = user_input.get(CONF_CARE_INSTRUCTIONS, "")
+                cleaned[CONF_CARE_INSTRUCTIONS] = (raw_care or "")[:2000]
+
             # Image toggle — write explicitly, and handle the text field.
             # Empty string is written as a tombstone (mirroring CONF_LABEL and
             # CONF_LATIN_NAME) so the PlantData.image_path property's fallback
@@ -544,6 +572,8 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
                     CONF_MOISTURE_SENSOR,
                     CONF_NOTES_ENABLED,
                     CONF_ENABLE_LATIN_NAME,
+                    CONF_CARE_INSTRUCTIONS,
+                    CONF_ENABLE_CARE_INSTRUCTIONS,
                     CONF_FERTILIZATION_ENABLED,
                     CONF_REPOTTING_ENABLED,
                     CONF_ENABLE_IMAGE,
@@ -670,6 +700,22 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
                     description={"suggested_value": current_latin},
                 )
             ] = selector.selector({"text": {}})
+
+        # Care instructions toggle — always shown so users can enable it after
+        # setup. If enabled, show a multiline text box (markdown-ish: **bold**).
+        care_currently_enabled = bool(
+            current_opts.get(CONF_ENABLE_CARE_INSTRUCTIONS, False)
+        )
+        schema_fields[vol.Required(CONF_ENABLE_CARE_INSTRUCTIONS, default=care_currently_enabled)] = selector.selector(
+            {"boolean": {}}
+        )
+        if care_currently_enabled:
+            schema_fields[
+                vol.Optional(
+                    CONF_CARE_INSTRUCTIONS,
+                    description={"suggested_value": defaults.get(CONF_CARE_INSTRUCTIONS, "")},
+                )
+            ] = selector.selector({"text": {"multiline": True}})
 
         # Image toggle — always shown so users can enable it after setup.
         # If already enabled, also show the path field to edit the value.
