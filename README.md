@@ -38,6 +38,7 @@ A fully local, event-driven Home Assistant custom integration for tracking and m
 - Track fertilization on a separate interval
 - Same sensor pattern as watering
 - Snoozing watering also snoozes fertilization if it is due the same day
+- **Sync to watering day (optional)** — set a sync window of `1`–`6` days and marking a plant watered will snap an upcoming fertilization that falls within that window onto the same day, so you water and fertilize in one go. Off by default (`0`, fully independent intervals). It never delays a fertilization that's already due or overdue, and is skipped for plants with moisture-sensors enabled. Set it under **Fertilization settings** (at setup or via Configure) — keep it below your watering interval.
 - Can be enabled on any plant after setup via Configure — you'll be prompted for the last fertilized date when first enabled
 - When enabling fertilization on an existing plant via Configure, reload the
 entry/plant afterwards (**Settings → Devices & Services → Adaptive Plant →⋮ → Reload**) to create the fertilization entities. Once reloaded, open Configure again to set your desired interval — the Fertilization interval field appears once fertilization is active. Then press **Mark fertilized** once for the interval to take effect and for Days until fertilization to calculate correctly.
@@ -48,6 +49,7 @@ entry/plant afterwards (**Settings → Devices & Services → Adaptive Plant →
 - Automatically mark as watered if soil is saturated
 - Adaptive watering logic is disabled for moisture sensor plants — the sensor drives watering decisions, the schedule acts as a fallback only
 - Moisture sensor, dry threshold, and wet threshold can all be added, changed, or removed after setup via Configure. Use the Enable moisture sensor toggle to remove a sensor — toggling off clears the sensor and both thresholds.
+- The live moisture % can be shown as a chip on any card tab — Overview, Today, and Upcoming — instead of the watering-days countdown (see `show_moisture_in_overview` / `show_moisture_in_today` / `show_moisture_in_upcoming` in the card config below).
 
 > **Tip:** To remove a moisture sensor after setup, open Configure, toggle Enable moisture sensor off, and save. (The moisture sensor uses Home Assistant's entity picker, which can't be cleared by deleting the value — the toggle is the supported way to remove it.)
 
@@ -72,8 +74,17 @@ entry/plant afterwards (**Settings → Devices & Services → Adaptive Plant →
 - Displayed on the companion card below the plant name (if enabled)
 
 ### 📝 Notes (optional)
-- Free-form text field stored per plant
+- Free-form text field stored per plant - directly editable via the companion card.
 - Can be enabled or disabled at any time via Configure — no restart required
+
+### 📖 Care Instructions (optional)
+- Free-form care notes per plant — light, soil, humidity, feeding quirks, whatever you want to remember
+- Displayed **read-only** on the companion card, in the expanded detail on the Overview tab
+- Basic formatting supported: wrap text in `**double asterisks**` for **bold**, and line breaks are preserved
+- Up to 2000 characters
+- Enabled per plant via Configure at any time. After enabling, **save and reopen Configure** to type your notes (the text box appears once the feature is active). Your text is preserved if you toggle the feature off and back on.
+
+> **Note:** Care instructions are read-only on the card by design — they're a reference you set in Configure, not an editable field on the dashboard. Clearing the text while the feature stays enabled simply hides the Care section.
 
 ### 🏠 Area & Label Support
 - Assign each plant to a Home Assistant area during setup
@@ -184,6 +195,7 @@ Hard refresh your browser (Ctrl+Shift+R / Cmd+Shift+R) after installing or updat
 - **Confirm Health button** — always visible in the Overview expanded detail. Shows a heart icon and reads "Update Due" when a health check-in is overdue. Color configurable.
 - **Repotting** — Mark Repotted button and date input in the expanded detail view on the overview tab, with customizable button color and icon. The button and input can be hidden via the visual editor or `show_repotting` — the last repotted date always remains visible.
 - **Latin / scientific name** — displays in italics below the plant name across all three tabs when enabled on a plant. Font size, color, and vertical padding all configurable.
+- **Care instructions** — free-form, read-only care notes shown in the Overview expanded detail when enabled on a plant. Supports `**bold**` and line breaks; appears automatically when a plant has care text (no card config needed).
 - **Transparent background** — option to hide the card background, compatible with frosted glass themes
 - **Pin hold button** — optionally fix the "Hold to complete all" button to the bottom of the card
 - **Full visual editor** — configure everything without writing YAML
@@ -262,6 +274,9 @@ image_shape: circle       # circle | square — square uses softly rounded corne
 # Moisture sensor options
 exclude_moisture_from_upcoming: false  # hide moisture-tracked plants from Upcoming tab
 show_moisture_in_overview: false       # show live moisture % instead of watering days in Overview
+show_moisture_in_today: false          # show live moisture % chip on the Today tab
+show_moisture_in_upcoming: false       # show live moisture % chip on the Upcoming tab
+                                       # (exclude_moisture_from_upcoming still wins on Upcoming)
 # Repotting
 show_repotting: true      # set false to hide button & date input (date still shown)
 # Latin / scientific name
