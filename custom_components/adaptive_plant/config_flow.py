@@ -34,12 +34,14 @@ from .const import (
     CONF_SNOOZE_THRESHOLD,
     CONF_WET_THRESHOLD,
     DEFAULT_EARLY_WATERING_THRESHOLD,
+    DEFAULT_FERT_SYNC_WINDOW,
     DEFAULT_FERTILIZATION_INTERVAL,
     DEFAULT_HEALTH_PROMPT_INTERVAL,
     DEFAULT_SNOOZE_THRESHOLD,
     DEFAULT_WATERING_INTERVAL,
     DOMAIN,
     OPT_FERTILIZATION_INTERVAL,
+    OPT_FERT_SYNC_WINDOW,
     OPT_WATERING_INTERVAL,
     STATE_LAST_FERTILIZED,
     STATE_LAST_REPOTTED,
@@ -157,6 +159,9 @@ def _fertilize_schema(defaults: dict) -> vol.Schema:
     return vol.Schema({
         vol.Required(OPT_FERTILIZATION_INTERVAL, default=defaults.get(OPT_FERTILIZATION_INTERVAL, DEFAULT_FERTILIZATION_INTERVAL)): selector.selector(
             {"number": {"min": 1, "max": 365, "mode": "box", "unit_of_measurement": "days"}}
+        ),
+        vol.Required(OPT_FERT_SYNC_WINDOW, default=defaults.get(OPT_FERT_SYNC_WINDOW, DEFAULT_FERT_SYNC_WINDOW)): selector.selector(
+            {"number": {"min": 0, "max": 6, "mode": "box", "unit_of_measurement": "days"}}
         ),
     })
 
@@ -423,6 +428,8 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
         # Stash cleaned options while we run a sub-flow (fertilize/repot init)
         self._pending_opts: dict = {}
         # Flags set when a first-enable sub-flow is in progress
+        self._pending_image_first: bool = False
+        self._pending_latin_first: bool = False
         self._pending_fert_first: bool = False
         self._pending_repot_first: bool = False
         # True when the user submitted a blank or "null" label in step 1 —
@@ -546,28 +553,37 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
                         del merged[k]
 
                 # ── First-enable detection ────────────────────────────────────
+                # Each fires when its toggle flips on in this save and the
+                # feature wasn't already active, so the matching sub-step can
+                # collect the missing input (image path, latin name, dates) in
+                # the same flow — mirroring the setup wizard. Without this, a
+                # dependent field can't appear until the form is reopened, since
+                # an options-flow schema is built once before the user toggles.
+                image_was_enabled = bool(
+                    current_opts.get(CONF_ENABLE_IMAGE, entry.data.get(CONF_ENABLE_IMAGE, False))
+                )
+                latin_was_enabled = bool(
+                    current_opts.get(CONF_ENABLE_LATIN_NAME, entry.data.get(CONF_ENABLE_LATIN_NAME, False))
+                )
+                self._pending_opts = merged
+                self._pending_image_first = (
+                    cleaned.get(CONF_ENABLE_IMAGE) is True and not image_was_enabled
+                )
+                self._pending_latin_first = (
+                    cleaned.get(CONF_ENABLE_LATIN_NAME) is True and not latin_was_enabled
+                )
                 # Fertilization: toggle just turned on AND no last_fertilized yet
-                fert_first_enable = (
+                self._pending_fert_first = (
                     cleaned.get(CONF_FERTILIZATION_ENABLED) is True
                     and STATE_LAST_FERTILIZED not in current_opts
                 )
                 # Repotting: toggle just turned on AND no last_repotted yet
-                repot_first_enable = (
+                self._pending_repot_first = (
                     cleaned.get(CONF_REPOTTING_ENABLED) is True
                     and STATE_LAST_REPOTTED not in current_opts
                 )
 
-                if fert_first_enable or repot_first_enable:
-                    # Stash the fully-merged options so the sub-flow can write
-                    # them once it has collected the missing dates.
-                    self._pending_opts = merged
-                    self._pending_fert_first = fert_first_enable
-                    self._pending_repot_first = repot_first_enable
-                    if fert_first_enable:
-                        return await self.async_step_fertilized_init()
-                    return await self.async_step_repotted_init()
-
-                return self.async_create_entry(title="", data=merged)
+                return await self._route_first_enable()
 
         defaults = {**entry.data, **current_opts}
 
@@ -621,6 +637,9 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
         if fert_currently_enabled:
             schema_fields[vol.Required(OPT_FERTILIZATION_INTERVAL, default=defaults.get(OPT_FERTILIZATION_INTERVAL, DEFAULT_FERTILIZATION_INTERVAL))] = selector.selector(
                 {"number": {"min": 1, "max": 365, "mode": "box", "unit_of_measurement": "days"}}
+            )
+            schema_fields[vol.Required(OPT_FERT_SYNC_WINDOW, default=defaults.get(OPT_FERT_SYNC_WINDOW, DEFAULT_FERT_SYNC_WINDOW))] = selector.selector(
+                {"number": {"min": 0, "max": 6, "mode": "box", "unit_of_measurement": "days"}}
             )
 
         # Repotting toggle — always shown unconditionally.
@@ -718,29 +737,87 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
                 # ── First-enable detection (same as in async_step_init) ───────
                 # Must run here too — when moisture options are collected first,
                 # async_step_init never reaches the detection block in its else branch.
-                fert_first_enable = (
+                image_was_enabled = bool(
+                    current_opts.get(CONF_ENABLE_IMAGE, entry.data.get(CONF_ENABLE_IMAGE, False))
+                )
+                latin_was_enabled = bool(
+                    current_opts.get(CONF_ENABLE_LATIN_NAME, entry.data.get(CONF_ENABLE_LATIN_NAME, False))
+                )
+                self._pending_opts = merged
+                self._pending_image_first = (
+                    self._pending_opts.get(CONF_ENABLE_IMAGE) is True and not image_was_enabled
+                )
+                self._pending_latin_first = (
+                    self._pending_opts.get(CONF_ENABLE_LATIN_NAME) is True and not latin_was_enabled
+                )
+                self._pending_fert_first = (
                     self._pending_opts.get(CONF_FERTILIZATION_ENABLED) is True
                     and STATE_LAST_FERTILIZED not in current_opts
                 )
-                repot_first_enable = (
+                self._pending_repot_first = (
                     self._pending_opts.get(CONF_REPOTTING_ENABLED) is True
                     and STATE_LAST_REPOTTED not in current_opts
                 )
 
-                if fert_first_enable or repot_first_enable:
-                    self._pending_opts = merged
-                    self._pending_fert_first = fert_first_enable
-                    self._pending_repot_first = repot_first_enable
-                    if fert_first_enable:
-                        return await self.async_step_fertilized_init()
-                    return await self.async_step_repotted_init()
-
-                return self.async_create_entry(title="", data=merged)
+                return await self._route_first_enable()
 
         return self.async_show_form(
             step_id="moisture_options",
             data_schema=_moisture_schema(defaults),
             errors=errors,
+        )
+
+    # ── First-enable sub-flow dispatcher ──────────────────────────────────────
+
+    async def _route_first_enable(self) -> FlowResult:
+        """Route to the next pending first-enable sub-step, or save.
+
+        Ordered image → latin → fertilization → repotting. The image/latin steps
+        clear their own flag and call back here; the fertilization/repotting
+        steps retain their existing chain (_after_fertilized_init → repot →
+        save), so this dispatcher only fronts the chain and leaves that logic
+        untouched. When no flag is set, the merged options are written.
+        """
+        if self._pending_image_first:
+            return await self.async_step_image_init()
+        if self._pending_latin_first:
+            return await self.async_step_latin_init()
+        if self._pending_fert_first:
+            return await self.async_step_fertilized_init()
+        if self._pending_repot_first:
+            return await self.async_step_repotted_init()
+        return self.async_create_entry(title="", data=self._pending_opts)
+
+    async def async_step_image_init(self, user_input: dict | None = None) -> FlowResult:
+        """Ask for the image path on first enable via options — mirrors setup."""
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            path = user_input.get(CONF_IMAGE_PATH, "").strip()
+            if path and not path.startswith("/local/"):
+                errors[CONF_IMAGE_PATH] = "invalid_image_path"
+            else:
+                # Empty-string tombstone (mirrors the inline image handling) so
+                # the PlantData.image_path fallback to entry.data can't resurface
+                # a stale setup-wizard value.
+                self._pending_opts[CONF_IMAGE_PATH] = path or ""
+                self._pending_image_first = False
+                return await self._route_first_enable()
+        return self.async_show_form(
+            step_id="image_init",
+            data_schema=_image_schema({}),
+            errors=errors,
+        )
+
+    async def async_step_latin_init(self, user_input: dict | None = None) -> FlowResult:
+        """Ask for the latin name on first enable via options — mirrors setup."""
+        if user_input is not None:
+            name = user_input.get(CONF_LATIN_NAME, "").strip()
+            self._pending_opts[CONF_LATIN_NAME] = name or ""
+            self._pending_latin_first = False
+            return await self._route_first_enable()
+        return self.async_show_form(
+            step_id="latin_init",
+            data_schema=_latin_name_schema({}),
         )
 
     # ── Fertilization first-enable sub-flow ───────────────────────────────────
