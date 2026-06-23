@@ -58,7 +58,11 @@
       "fertilize": {
         "title": "Fertilization Settings",
         "data": {
-          "fertilization_interval_days": "Fertilization interval (days)"
+          "fertilization_interval_days": "Fertilization interval (days)",
+          "fertilization_sync_window": "Sync to watering within (days)"
+        },
+        "data_description": {
+          "fertilization_sync_window": "When you mark this plant watered, an upcoming fertilization within this many days snaps onto the watering day so you can do both at once. 0 disables, leaving watering and fertilization intervals independent of one another. Keep it below the watering interval."
         }
       },
       "last_fertilized": {
@@ -133,6 +137,7 @@
           "snooze_threshold": "Snooze threshold (times)",
           "health_prompt_interval_days": "Health prompt interval (days)",
           "fertilization_interval_days": "Fertilization interval (days)",
+          "fertilization_sync_window": "Sync fertilization to watering within (days)",
           "image_path": "Image path (/local/...)",
           "notes_enabled": "Enable notes",
           "latin_name": "Latin name",
@@ -149,7 +154,8 @@
           "fertilization_enabled": "Toggle to enable or disable fertilization tracking. Previous dates are preserved when re-enabled.",
           "repotting_enabled": "Toggle to enable or disable repotting tracking. Previous dates are preserved when re-enabled.",
           "moisture_sensor_enabled": "Toggle off to remove the moisture sensor and clear all thresholds.",
-          "moisture_sensor": "Select a sensor to drive automatic watering logic."
+          "moisture_sensor": "Select a sensor to drive automatic watering logic.",
+          "fertilization_sync_window": "When you mark this plant watered, an upcoming fertilization within this many days snaps onto the watering day so you can do both at once. 0 disables, leaving watering and fertilization intervals independent of one another. Keep it below the watering interval."
         }
       },
       "moisture_options": {
@@ -187,11 +193,26 @@
         "data": {
           "custom_repotted_date": "Date last repotted"
         }
+      },
+      "image_init": {
+        "title": "Plant Image",
+        "description": "Enter the path to an image in your /local/ folder, e.g. /local/adaptive_plant/monstera.png. Leave it blank and press Submit to add one later via Configure.",
+        "data": {
+          "image_path": "Image path (/local/...)"
+        }
+      },
+      "latin_init": {
+        "title": "Latin Name",
+        "description": "Enter this plant's scientific (Latin) name, e.g. Monstera deliciosa. Leave it blank and press Submit to add one later via Configure.",
+        "data": {
+          "latin_name": "Latin name"
+        }
       }
     },
     "error": {
       "dry_above_wet": "Dry threshold must be less than wet threshold.",
-      "invalid_date": "Please enter a valid date."
+      "invalid_date": "Please enter a valid date.",
+      "invalid_image_path": "Image path must start with /local/."
     }
   },
   "entity": {
