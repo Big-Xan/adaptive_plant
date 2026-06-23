@@ -63,13 +63,13 @@ entry/plant afterwards (**Settings → Devices & Services → Adaptive Plant →
 - Attach a `/local/` image path to display on dashboard cards. Can be changed via configuration after entry is created. I recommend creating a folder titled 'adaptive_plant' in your `/www/` folder and uploading your plant images there.
 > **Example image pathway (w/ folder created) for card config:**  `/local/adaptive_plant/monstera.png`
 
+> **Example image pathway (without folder, uploaded directly into `/www/`) for card config:**  `/local/monstera.png`
+- Image **size** (px) and **shape** (circle / square, softly rounded) are configurable on the companion card via the visual editor or YAML. Set `image_size: 0` to hide plant photos entirely for clean text-only rows.
+
 ### 🔬 Latin Name (optional)
 - Store the scientific name for each plant
 - Enabled or disabled per plant during setup or via Configure at any time
 - Displayed on the companion card below the plant name (if enabled)
-
-> **Example image pathway (without folder, uploaded directly into `/www/`) for card config:**  `/local/monstera.png`
-- Image **size** (px) and **shape** (circle / square, softly rounded) are configurable on the companion card via the visual editor or YAML. Set `image_size: 0` to hide plant photos entirely for clean text-only rows. The health ring follows the chosen shape.
 
 ### 📝 Notes (optional)
 - Free-form text field stored per plant
