@@ -24,6 +24,7 @@ CONF_ENABLE_REPOTTING = "enable_repotting"
 # ── Config entry options keys (mutable at runtime) ─────────────────────────────
 OPT_WATERING_INTERVAL = "watering_interval_days"
 OPT_FERTILIZATION_INTERVAL = "fertilization_interval_days"
+OPT_FERT_SYNC_WINDOW = "fertilization_sync_window"
 CONF_FERTILIZATION_ENABLED = "fertilization_enabled"
 CONF_REPOTTING_ENABLED = "repotting_enabled"
 
@@ -54,6 +55,11 @@ DEFAULT_WATERING_INTERVAL = 7
 DEFAULT_EARLY_WATERING_THRESHOLD = 3
 DEFAULT_HEALTH_PROMPT_INTERVAL = 14
 DEFAULT_FERTILIZATION_INTERVAL = 30
+# Fertilization sync: when > 0, marking a plant watered will snap an upcoming
+# fertilization date onto that watering day if it falls within this many days.
+# 0 disables the feature. Kept below the watering interval in practice so only
+# one candidate watering day is ever in range.
+DEFAULT_FERT_SYNC_WINDOW = 0
 
 # ── Misc ──────────────────────────────────────────────────────────────────────
 NOTIFICATION_ID_PREFIX = "adaptive_plant_health_"
