@@ -2,7 +2,7 @@
 
 A fully local, event-driven Home Assistant custom integration for tracking and managing your plants — with intelligent adaptive watering logic that learns your plants' needs over time. Includes a highly customizable companion Lovelace card with a full visual editor and a task reminder blueprint for Companion App notifications.
 
-![Adaptive Plant Card](https://github.com/user-attachments/assets/587f947e-19eb-41ad-8742-bec8674febfc)
+![Adaptive Plant Card](https://github.com/user-attachments/assets/8e650e79-d9d7-4fca-8f5d-587dfd5d9724)
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 ![HA Version](https://img.shields.io/badge/HA-2024.6%2B-blue)
@@ -42,14 +42,6 @@ A fully local, event-driven Home Assistant custom integration for tracking and m
 - When enabling fertilization on an existing plant via Configure, reload the
 entry/plant afterwards (**Settings → Devices & Services → Adaptive Plant →⋮ → Reload**) to create the fertilization entities. Once reloaded, open Configure again to set your desired interval — the Fertilization interval field appears once fertilization is active. Then press **Mark fertilized** once for the interval to take effect and for Days until fertilization to calculate correctly.
 
-### 🪴 Repotting (optional)
-- Track when a plant was last repotted via the **Last repotted** date sensor
-- **Mark repotted** button stamps today's date as the last repotting event
-- **Repotted on** text field — enter a date in `YYYY-MM-DD` format (e.g. `2026-04-01`) before pressing Mark repotted to record a past date instead of today. The field clears automatically after the button is pressed.
-- Can be enabled on any plant after setup via Configure — you'll be prompted for the last repotted date when first enabled
-
-> **Note:** The **Repotted on** field accepts dates in `YYYY-MM-DD` format only (e.g. `2026-04-01`). Invalid entries are ignored and Mark repotted will fall back to today's date.
-
 ### 💧 Moisture Sensor Integration (optional)
 - Link any existing sensor entity
 - Automatically reschedule watering if soil is dry
@@ -59,28 +51,35 @@ entry/plant afterwards (**Settings → Devices & Services → Adaptive Plant →
 
 > **Tip:** To remove a moisture sensor after setup, open Configure, toggle Enable moisture sensor off, and save. (The moisture sensor uses Home Assistant's entity picker, which can't be cleared by deleting the value — the toggle is the supported way to remove it.)
 
-### 📝 Notes (optional)
-- Free-form text field stored per plant
-- Can be enabled or disabled at any time via Configure — no restart required
+### 🪴 Repotting (optional)
+- Track when a plant was last repotted via the **Last repotted** date sensor
+- **Mark repotted** button stamps today's date as the last repotting event
+- **Repotted on** text field — enter a date in `YYYY-MM-DD` format (e.g. `2026-04-01`) before pressing Mark repotted to record a past date instead of today. The field clears automatically after the button is pressed.
+- Can be enabled on any plant after setup via Configure — you'll be prompted for the last repotted date when first enabled
+
+> **Note:** The **Repotted on** field accepts dates in `YYYY-MM-DD` format only (e.g. `2026-04-01`). Invalid entries are ignored and Mark repotted will fall back to today's date.
 
 ### 🖼️ Plant Image (optional)
 - Attach a `/local/` image path to display on dashboard cards. Can be changed via configuration after entry is created. I recommend creating a folder titled 'adaptive_plant' in your `/www/` folder and uploading your plant images there.
 > **Example image pathway (w/ folder created) for card config:**  `/local/adaptive_plant/monstera.png`
 
+### 🔬 Latin Name (optional)
+- Store the scientific name for each plant
+- Enabled or disabled per plant during setup or via Configure at any time
+- Displayed on the companion card below the plant name (if enabled)
+
 > **Example image pathway (without folder, uploaded directly into `/www/`) for card config:**  `/local/monstera.png`
 - Image **size** (px) and **shape** (circle / square, softly rounded) are configurable on the companion card via the visual editor or YAML. Set `image_size: 0` to hide plant photos entirely for clean text-only rows. The health ring follows the chosen shape.
 
+### 📝 Notes (optional)
+- Free-form text field stored per plant
+- Can be enabled or disabled at any time via Configure — no restart required
 
 ### 🏠 Area & Label Support
 - Assign each plant to a Home Assistant area during setup
 - Optionally add a **label** (e.g. `Left shelf`, `Window sill`) to group plants within an area
 - Labels can be added, changed, or removed at any time via the integration's settings
-- Unlabelled plants always appear first within their area
-
-### 🔬 Latin Name (optional)
-- Store the scientific name for each plant
-- Enabled or disabled per plant during setup or via Configure at any time
-- Displayed on the companion card below the plant name (if enabled)
+- Unlabelled plants always appear first within their area on the companion card.
 
 ---
 
