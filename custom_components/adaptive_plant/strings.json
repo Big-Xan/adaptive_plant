@@ -142,6 +142,8 @@
           "notes_enabled": "Enable notes",
           "latin_name": "Latin name",
           "enable_latin_name": "Enable latin name",
+          "enable_care_instructions": "Enable care instructions",
+          "care_instructions": "Care instructions",
           "enable_image": "Enable image",
           "fertilization_enabled": "Enable fertilization tracking",
           "repotting_enabled": "Enable repotting tracking",
@@ -153,6 +155,8 @@
           "notes_enabled": "Toggle to enable or disable the notes field for this plant.",
           "fertilization_enabled": "Toggle to enable or disable fertilization tracking. Previous dates are preserved when re-enabled.",
           "repotting_enabled": "Toggle to enable or disable repotting tracking. Previous dates are preserved when re-enabled.",
+          "enable_care_instructions": "Toggle to enable or disable care instructions for this plant. Your text is preserved when re-enabled.",
+          "care_instructions": "Free-form care notes shown read-only on the card. **bold** and line breaks are supported.",
           "moisture_sensor_enabled": "Toggle off to remove the moisture sensor and clear all thresholds.",
           "moisture_sensor": "Select a sensor to drive automatic watering logic.",
           "fertilization_sync_window": "When you mark this plant watered, an upcoming fertilization within this many days snaps onto the watering day so you can do both at once. 0 disables, leaving watering and fertilization intervals independent of one another. Keep it below the watering interval."
