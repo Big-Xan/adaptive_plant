@@ -118,10 +118,12 @@ class NextWateringSensor(PlantSensorBase):
 
     @property
     def extra_state_attributes(self) -> dict:
-        """Expose label as an attribute so the companion card can read it."""
+        """Expose label + care instructions as attributes for the companion card."""
         attrs = {}
         if self._plant.label:
             attrs["label"] = self._plant.label
+        if self._plant.enable_care_instructions and self._plant.care_instructions:
+            attrs["care_instructions"] = self._plant.care_instructions
         return attrs
 
 
