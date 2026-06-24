@@ -154,7 +154,9 @@
           "fertilization_enabled": "Enable fertilization tracking",
           "repotting_enabled": "Enable repotting tracking",
           "moisture_sensor_enabled": "Enable moisture sensor",
-          "moisture_sensor": "Moisture sensor"
+          "moisture_sensor": "Moisture sensor",
+          "dry_threshold": "Dry threshold (reschedule watering to today)",
+          "wet_threshold": "Wet threshold (auto-mark as watered)"
         },
         "data_description": {
           "label": "Optional sublabel to group plants within an area (e.g. Left shelf, Window sill). Leave blank or enter 'null' to remove.",

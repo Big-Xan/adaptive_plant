@@ -646,11 +646,29 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
 
             if moisture_raw:
                 self._pending_moisture_sensor = moisture_raw
-                # Carry non-moisture fields forward so they're saved after thresholds
+                # Carry non-moisture fields forward so they're saved with the thresholds.
                 self._pending_opts = cleaned
                 # Carry the clear-label intent forward — step 2's merge would
                 # otherwise pull the stale value back in from current_opts.
                 self._pending_clear_label = clear_label
+                # Dry/wet thresholds are shown inline on the main form whenever a
+                # sensor is already active (see _init_schema_fields), so they can be
+                # edited on demand and saved in one step. They are absent only on a
+                # first-time enable — the form was built with the sensor off, so the
+                # fields couldn't be shown — in which case we collect them once in the
+                # dedicated step.
+                inline_dry = user_input.get(CONF_DRY_THRESHOLD)
+                inline_wet = user_input.get(CONF_WET_THRESHOLD)
+                if inline_dry is not None and inline_wet is not None:
+                    if inline_dry >= inline_wet:
+                        return self.async_show_form(
+                            step_id="init",
+                            data_schema=vol.Schema(self._init_schema_fields()),
+                            errors={"base": "dry_above_wet"},
+                        )
+                    return await self.async_step_moisture_options(
+                        {CONF_DRY_THRESHOLD: inline_dry, CONF_WET_THRESHOLD: inline_wet}
+                    )
                 return await self.async_step_moisture_options()
             else:
                 # Sensor cleared — tombstone the sensor and strip thresholds.
@@ -872,6 +890,19 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
         schema_fields[sensor_field] = selector.selector(
             {"entity": {"domain": "sensor", "multiple": False}}
         )
+
+        # When a sensor is already active, show its dry/wet thresholds inline so
+        # they can be edited here on demand. The dedicated threshold step is then
+        # only needed for a first-time sensor enable (the form is built once, so a
+        # sensor toggled on in THIS submission can't reveal these fields yet).
+        # Same selector spec as _moisture_schema.
+        if current_moisture:
+            schema_fields[
+                vol.Required(CONF_DRY_THRESHOLD, default=defaults.get(CONF_DRY_THRESHOLD, 30.0))
+            ] = selector.selector({"number": {"min": 0, "max": 100, "step": 0.1, "mode": "box"}})
+            schema_fields[
+                vol.Required(CONF_WET_THRESHOLD, default=defaults.get(CONF_WET_THRESHOLD, 70.0))
+            ] = selector.selector({"number": {"min": 0, "max": 100, "step": 0.1, "mode": "box"}})
 
         return schema_fields
 
