@@ -16,10 +16,13 @@ from homeassistant.helpers.event import (
 
 from .const import (
     CONF_AREA,
+    CONF_IMAGE_PATH,
     DEFAULT_HEALTH,
     DOMAIN,
     HEALTH_OPTIONS,
+    is_owned_image_path,
     OPT_WATERING_INTERVAL,
+    OWNED_IMAGE_PREFIX,
     PLATFORMS,
     STATE_HEALTH,
     STATE_HEALTH_LAST_UPDATED,
@@ -213,3 +216,20 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unloaded:
         hass.data[DOMAIN].pop(entry.entry_id, None)
     return unloaded
+
+
+def _delete_owned_image(config_dir: str, image_path: str) -> None:
+    """Blocking: best-effort delete of an owned image file under www/adaptive_plant/."""
+    filename = image_path[len(OWNED_IMAGE_PREFIX):]
+    full_path = Path(config_dir) / "www" / DOMAIN / filename
+    try:
+        full_path.unlink()
+    except OSError:
+        pass
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Clean up an owned uploaded image when the config entry is removed."""
+    image_path = entry.options.get(CONF_IMAGE_PATH, entry.data.get(CONF_IMAGE_PATH))
+    if is_owned_image_path(image_path):
+        await hass.async_add_executor_job(_delete_owned_image, hass.config.config_dir, image_path)
