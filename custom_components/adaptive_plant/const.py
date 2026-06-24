@@ -1,8 +1,25 @@
 """Constants for the Adaptive Plant integration."""
+from __future__ import annotations
+
+import re
 
 DOMAIN = "adaptive_plant"
 
 PLATFORMS = ["sensor", "button", "number", "select", "text"]
+
+# ── Uploaded-image ownership ───────────────────────────────────────────────────
+# Uploaded photos are saved as a uuid4 hex + ".jpg" (see _save_uploaded_image in
+# config_flow.py). Owned-file detection matches that exact shape — the folder
+# prefix AND a 32-char hex filename — so an image a user hand-places in the same
+# /www/adaptive_plant/ folder (e.g. /local/adaptive_plant/monstera.png) is never
+# treated as ours and is never auto-deleted on re-upload, disable, or removal.
+OWNED_IMAGE_PREFIX = f"/local/{DOMAIN}/"
+_OWNED_IMAGE_RE = re.compile(rf"^{re.escape(OWNED_IMAGE_PREFIX)}[0-9a-f]{{32}}\.jpg$")
+
+
+def is_owned_image_path(path: str | None) -> bool:
+    """Return True only for image files this integration created and may delete."""
+    return bool(path) and _OWNED_IMAGE_RE.match(path) is not None
 
 # ── Config entry data keys (set at setup, not user-editable after) ─────────────
 CONF_PLANT_NAME = "plant_name"
@@ -12,6 +29,8 @@ CONF_ENABLE_FERTILIZATION = "enable_fertilization"
 CONF_ENABLE_NOTES = "enable_notes"
 CONF_ENABLE_IMAGE = "enable_image"
 CONF_IMAGE_PATH = "image_path"
+# Transient, form-only field for the file-upload selector — never persisted.
+CONF_IMAGE_UPLOAD = "image_upload"
 CONF_MOISTURE_SENSOR = "moisture_sensor"
 CONF_DRY_THRESHOLD = "dry_threshold"
 CONF_WET_THRESHOLD = "wet_threshold"
