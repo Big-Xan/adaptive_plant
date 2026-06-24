@@ -1,12 +1,16 @@
 """Config flow for the Adaptive Plant integration."""
 from __future__ import annotations
 
+import logging
+import os
+import uuid
 from datetime import date, timedelta
 
 import voluptuous as vol
 
+from homeassistant.components.file_upload import process_uploaded_file
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlow
-from homeassistant.core import callback
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import selector
 
@@ -24,6 +28,7 @@ from .const import (
     CONF_FERTILIZATION_ENABLED,
     CONF_HEALTH_PROMPT_INTERVAL,
     CONF_IMAGE_PATH,
+    CONF_IMAGE_UPLOAD,
     CONF_INITIAL_LAST_FERTILIZED,
     CONF_INITIAL_LAST_WATERED,
     CONF_LABEL,
@@ -42,13 +47,17 @@ from .const import (
     DEFAULT_SNOOZE_THRESHOLD,
     DEFAULT_WATERING_INTERVAL,
     DOMAIN,
+    is_owned_image_path,
     OPT_FERTILIZATION_INTERVAL,
     OPT_FERT_SYNC_WINDOW,
     OPT_WATERING_INTERVAL,
+    OWNED_IMAGE_PREFIX,
     STATE_LAST_FERTILIZED,
     STATE_LAST_REPOTTED,
     STATE_NEXT_FERTILIZED,
 )
+
+_LOGGER = logging.getLogger(__name__)
 
 WATERING_DATE_TODAY = "today"
 WATERING_DATE_YESTERDAY = "yesterday"
@@ -178,6 +187,7 @@ def _latin_name_schema(defaults: dict) -> vol.Schema:
 
 def _image_schema(defaults: dict) -> vol.Schema:
     return vol.Schema({
+        vol.Optional(CONF_IMAGE_UPLOAD): selector.selector({"file": {"accept": "image/*"}}),
         vol.Optional(CONF_IMAGE_PATH, default=defaults.get(CONF_IMAGE_PATH, "")): selector.selector(
             {"text": {}}
         ),
@@ -210,6 +220,62 @@ def _resolve_date(selection: str, custom_date: str | None, interval: int) -> tup
         return None, today.isoformat()
     next_date = last + timedelta(days=interval)
     return last.isoformat(), next_date.isoformat()
+
+
+def _save_uploaded_image(hass: HomeAssistant, file_id: str, previous_path: str | None) -> str:
+    """Blocking: read the uploaded file, downscale it, and write it to www/.
+
+    Runs entirely inside an executor job — must not be awaited directly.
+    """
+    from PIL import Image
+
+    target_dir = hass.config.path("www", DOMAIN)
+    os.makedirs(target_dir, exist_ok=True)
+    filename = f"{uuid.uuid4().hex}.jpg"
+    target_path = os.path.join(target_dir, filename)
+
+    try:
+        from pillow_heif import register_heif_opener
+        register_heif_opener()
+    except ImportError:
+        pass
+
+    with process_uploaded_file(hass, file_id) as temp_path:
+        with Image.open(temp_path) as img:
+            from PIL import ImageOps
+            img = ImageOps.exif_transpose(img)
+            img = img.convert("RGB")
+            img.thumbnail((1024, 1024))
+            img.save(target_path, format="JPEG", quality=85)
+
+    if is_owned_image_path(previous_path):
+        previous_filename = previous_path[len(OWNED_IMAGE_PREFIX):]
+        previous_full_path = os.path.join(target_dir, previous_filename)
+        try:
+            os.remove(previous_full_path)
+        except OSError:
+            pass
+
+    return f"{OWNED_IMAGE_PREFIX}{filename}"
+
+
+def _delete_owned_image(hass: HomeAssistant, path: str) -> None:
+    """Blocking: best-effort delete of an owned image file. Run in an executor job."""
+    filename = path[len(OWNED_IMAGE_PREFIX):]
+    full_path = os.path.join(hass.config.path("www", DOMAIN), filename)
+    try:
+        os.remove(full_path)
+    except OSError:
+        pass
+
+
+async def _persist_uploaded_image(hass: HomeAssistant, file_id: str, previous_path: str | None) -> str:
+    """Persist an uploaded image to www/adaptive_plant/ and return its public path.
+
+    Raises on failure (corrupt/non-image upload) so callers can surface
+    an `invalid_image` form error.
+    """
+    return await hass.async_add_executor_job(_save_uploaded_image, hass, file_id, previous_path)
 
 
 class AdaptivePlantConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -385,11 +451,25 @@ class AdaptivePlantConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_image(self, user_input: dict | None = None) -> FlowResult:
         errors: dict[str, str] = {}
         if user_input is not None:
+            file_id = user_input.get(CONF_IMAGE_UPLOAD)
             path = user_input.get(CONF_IMAGE_PATH, "").strip()
-            if path and not path.startswith("/local/"):
-                errors[CONF_IMAGE_PATH] = "invalid_image_path"
+            if file_id:
+                try:
+                    self._data[CONF_IMAGE_PATH] = await _persist_uploaded_image(
+                        self.hass, file_id, self._data.get(CONF_IMAGE_PATH)
+                    )
+                except Exception:  # noqa: BLE001
+                    _LOGGER.exception("Failed to process uploaded plant image")
+                    errors[CONF_IMAGE_UPLOAD] = "invalid_image"
+            elif path:
+                if not path.startswith("/local/"):
+                    errors[CONF_IMAGE_PATH] = "invalid_image_path"
+                else:
+                    self._data[CONF_IMAGE_PATH] = path
             else:
-                self._data[CONF_IMAGE_PATH] = path or None
+                self._data[CONF_IMAGE_PATH] = None
+
+            if not errors:
                 if self._data.get(CONF_MOISTURE_SENSOR):
                     return await self.async_step_moisture()
                 return self._create_entry()
@@ -454,6 +534,7 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
             clear_label = (not label_stripped) or label_stripped.lower() == "null"
 
             cleaned = {k: v for k, v in user_input.items() if v not in (None, "")}
+            cleaned.pop(CONF_IMAGE_UPLOAD, None)
 
             # Normalise label: drop from `cleaned` unconditionally, then re-add
             # the stripped value only if the user didn't intend to clear it.
@@ -508,18 +589,51 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
                 raw_care = user_input.get(CONF_CARE_INSTRUCTIONS, "")
                 cleaned[CONF_CARE_INSTRUCTIONS] = (raw_care or "")[:2000]
 
-            # Image toggle — write explicitly, and handle the text field.
+            # Image toggle — write explicitly, and handle the upload/text field.
             # Empty string is written as a tombstone (mirroring CONF_LABEL and
             # CONF_LATIN_NAME) so the PlantData.image_path property's fallback
             # to entry.data doesn't resurface a stale value set during the
             # original setup wizard.
             image_enabled = bool(user_input.get(CONF_ENABLE_IMAGE, False))
             cleaned[CONF_ENABLE_IMAGE] = image_enabled
+            current_image_path = current_opts.get(CONF_IMAGE_PATH, entry.data.get(CONF_IMAGE_PATH))
             if image_enabled:
-                raw_image = user_input.get(CONF_IMAGE_PATH, "")
-                cleaned[CONF_IMAGE_PATH] = raw_image.strip() if raw_image else ""
+                upload_file_id = user_input.get(CONF_IMAGE_UPLOAD)
+                if upload_file_id:
+                    try:
+                        cleaned[CONF_IMAGE_PATH] = await _persist_uploaded_image(
+                            self.hass, upload_file_id, current_image_path
+                        )
+                    except Exception:  # noqa: BLE001
+                        _LOGGER.exception("Failed to process uploaded plant image")
+                        errors[CONF_IMAGE_UPLOAD] = "invalid_image"
+                else:
+                    raw_image = user_input.get(CONF_IMAGE_PATH, "")
+                    new_path = raw_image.strip() if raw_image else ""
+                    cleaned[CONF_IMAGE_PATH] = new_path
+                    if new_path != current_image_path and is_owned_image_path(current_image_path):
+                        await self.hass.async_add_executor_job(
+                            _delete_owned_image, self.hass, current_image_path
+                        )
             else:
-                cleaned.pop(CONF_IMAGE_PATH, None)
+                # Image disabled — tombstone the path (mirroring CONF_LABEL /
+                # CONF_LATIN_NAME) rather than popping. We also delete the owned
+                # file below, so a bare pop would leave a stale path in options
+                # that resurfaces as a broken image if the user re-enables
+                # without re-uploading. The "" tombstone is preserved through
+                # `merged` by _skip_clear and makes image_path resolve to None.
+                cleaned[CONF_IMAGE_PATH] = ""
+                if is_owned_image_path(current_image_path):
+                    await self.hass.async_add_executor_job(
+                        _delete_owned_image, self.hass, current_image_path
+                    )
+
+            if errors:
+                return self.async_show_form(
+                    step_id="init",
+                    data_schema=vol.Schema(self._init_schema_fields()),
+                    errors=errors,
+                )
 
             # Handle moisture sensor selection.
             # The toggle is the authoritative clear mechanism — if it's off we
@@ -615,6 +729,16 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
 
                 return await self._route_first_enable()
 
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(self._init_schema_fields()),
+            errors=errors,
+        )
+
+    def _init_schema_fields(self) -> dict:
+        """Build the field dict for the `init` step schema (also used to re-show on error)."""
+        entry = self._config_entry
+        current_opts = entry.options
         defaults = {**entry.data, **current_opts}
 
         # Resolve the currently active moisture sensor. Key-presence check
@@ -726,6 +850,9 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
             {"boolean": {}}
         )
         if image_currently_enabled:
+            schema_fields[vol.Optional(CONF_IMAGE_UPLOAD)] = selector.selector(
+                {"file": {"accept": "image/*"}}
+            )
             schema_fields[
                 vol.Optional(
                     CONF_IMAGE_PATH,
@@ -746,11 +873,7 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
             {"entity": {"domain": "sensor", "multiple": False}}
         )
 
-        return self.async_show_form(
-            step_id="init",
-            data_schema=vol.Schema(schema_fields),
-            errors=errors,
-        )
+        return schema_fields
 
     async def async_step_moisture_options(self, user_input: dict | None = None) -> FlowResult:
         """Second step shown only when a moisture sensor has been selected."""
@@ -835,17 +958,39 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
         return self.async_create_entry(title="", data=self._pending_opts)
 
     async def async_step_image_init(self, user_input: dict | None = None) -> FlowResult:
-        """Ask for the image path on first enable via options — mirrors setup."""
+        """Ask for the image (upload or path) on first enable via options — mirrors setup."""
         errors: dict[str, str] = {}
         if user_input is not None:
+            file_id = user_input.get(CONF_IMAGE_UPLOAD)
             path = user_input.get(CONF_IMAGE_PATH, "").strip()
-            if path and not path.startswith("/local/"):
-                errors[CONF_IMAGE_PATH] = "invalid_image_path"
+            if file_id:
+                # Upload wins over a typed path, matching the setup wizard and
+                # the steady-state options form. previous_path is read from the
+                # live entry so a prior owned file is cleaned up; on a genuine
+                # first-enable it is normally absent.
+                entry = self._config_entry
+                previous_path = entry.options.get(
+                    CONF_IMAGE_PATH, entry.data.get(CONF_IMAGE_PATH)
+                )
+                try:
+                    self._pending_opts[CONF_IMAGE_PATH] = await _persist_uploaded_image(
+                        self.hass, file_id, previous_path
+                    )
+                except Exception:  # noqa: BLE001
+                    _LOGGER.exception("Failed to process uploaded plant image")
+                    errors[CONF_IMAGE_UPLOAD] = "invalid_image"
+            elif path:
+                if not path.startswith("/local/"):
+                    errors[CONF_IMAGE_PATH] = "invalid_image_path"
+                else:
+                    self._pending_opts[CONF_IMAGE_PATH] = path
             else:
                 # Empty-string tombstone (mirrors the inline image handling) so
                 # the PlantData.image_path fallback to entry.data can't resurface
                 # a stale setup-wizard value.
-                self._pending_opts[CONF_IMAGE_PATH] = path or ""
+                self._pending_opts[CONF_IMAGE_PATH] = ""
+
+            if not errors:
                 self._pending_image_first = False
                 return await self._route_first_enable()
         return self.async_show_form(
