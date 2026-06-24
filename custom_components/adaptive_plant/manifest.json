@@ -3,7 +3,7 @@
   "name": "Adaptive Plant",
   "codeowners": ["@Big-Xan"],
   "config_flow": true,
-  "dependencies": ["http"],
+  "dependencies": ["file_upload", "http"],
   "documentation": "https://github.com/Big-Xan/adaptive_plant",
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/Big-Xan/adaptive_plant/issues",
