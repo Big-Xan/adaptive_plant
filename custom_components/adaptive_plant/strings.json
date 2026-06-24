@@ -95,9 +95,13 @@
       },
       "image": {
         "title": "Plant Image",
-        "description": "Enter a path to an image in your /local/ folder (e.g. /local/IMG_4743.jpeg).",
+        "description": "Upload a photo, or enter a path to an image in your /local/ folder (e.g. /local/IMG_4743.jpeg).",
         "data": {
+          "image_upload": "Upload image",
           "image_path": "Image path (/local/...)"
+        },
+        "data_description": {
+          "image_upload": "Pick a photo from your device (PNG/JPEG). Takes priority over the path below."
         }
       },
       "latin_name": {
@@ -119,6 +123,7 @@
     "error": {
       "name_required": "Plant name cannot be empty.",
       "invalid_image_path": "Image path must start with /local/.",
+      "invalid_image": "Could not process the uploaded image. Please choose a different file and make sure it is a PNG or JPEG.",
       "dry_above_wet": "Dry threshold must be less than wet threshold.",
       "invalid_date": "Please enter a valid date."
     },
@@ -138,6 +143,7 @@
           "health_prompt_interval_days": "Health prompt interval (days)",
           "fertilization_interval_days": "Fertilization interval (days)",
           "fertilization_sync_window": "Sync fertilization to watering within (days)",
+          "image_upload": "Upload image",
           "image_path": "Image path (/local/...)",
           "notes_enabled": "Enable notes",
           "latin_name": "Latin name",
@@ -159,7 +165,8 @@
           "care_instructions": "Free-form care notes shown read-only on the card. Type \\*\\*bold\\*\\* to make text **bold**. Line breaks are supported.",
           "moisture_sensor_enabled": "Toggle off to remove the moisture sensor and clear all thresholds.",
           "moisture_sensor": "Select a sensor to drive automatic watering logic.",
-          "fertilization_sync_window": "When you mark this plant watered, an upcoming fertilization within this many days snaps onto the watering day so you can do both at once. 0 disables, leaving watering and fertilization intervals independent of one another. Keep it below the watering interval."
+          "fertilization_sync_window": "When you mark this plant watered, an upcoming fertilization within this many days snaps onto the watering day so you can do both at once. 0 disables, leaving watering and fertilization intervals independent of one another. Keep it below the watering interval.",
+          "image_upload": "Pick a photo from your device (PNG/JPEG). Takes priority over the path below."
         }
       },
       "moisture_options": {
@@ -200,9 +207,13 @@
       },
       "image_init": {
         "title": "Plant Image",
-        "description": "Enter the path to an image in your /local/ folder, e.g. /local/adaptive_plant/monstera.png. Leave it blank and press Submit to add one later via Configure.",
+        "description": "Upload a photo, or enter the path to an image in your /local/ folder, e.g. /local/adaptive_plant/monstera.png. Leave both blank and press Submit to add one later via Configure.",
         "data": {
+          "image_upload": "Upload image",
           "image_path": "Image path (/local/...)"
+        },
+        "data_description": {
+          "image_upload": "Pick a photo from your device (PNG/JPEG). Takes priority over the path below."
         }
       },
       "latin_init": {
@@ -216,7 +227,8 @@
     "error": {
       "dry_above_wet": "Dry threshold must be less than wet threshold.",
       "invalid_date": "Please enter a valid date.",
-      "invalid_image_path": "Image path must start with /local/."
+      "invalid_image_path": "Image path must start with /local/.",
+      "invalid_image": "Could not process the uploaded image. Please choose a different file and make sure it is a PNG or JPEG."
     }
   },
   "entity": {
