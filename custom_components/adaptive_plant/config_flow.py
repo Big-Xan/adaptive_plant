@@ -709,6 +709,12 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
                 latin_was_enabled = bool(
                     current_opts.get(CONF_ENABLE_LATIN_NAME, entry.data.get(CONF_ENABLE_LATIN_NAME, False))
                 )
+                fertilization_was_enabled = bool(
+                    current_opts.get(CONF_FERTILIZATION_ENABLED, entry.data.get(CONF_ENABLE_FERTILIZATION, False))
+                )
+                repotting_was_enabled = bool(
+                    current_opts.get(CONF_REPOTTING_ENABLED, entry.data.get(CONF_ENABLE_REPOTTING, False))
+                )
                 self._pending_opts = merged
                 self._pending_image_first = (
                     cleaned.get(CONF_ENABLE_IMAGE) is True and not image_was_enabled
@@ -716,14 +722,19 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
                 self._pending_latin_first = (
                     cleaned.get(CONF_ENABLE_LATIN_NAME) is True and not latin_was_enabled
                 )
-                # Fertilization: toggle just turned on AND no last_fertilized yet
+                # Fertilization: toggle flipped on this save, wasn't already active, and no date yet.
+                # The not-already-active guard mirrors the image/latin gates above; without it any
+                # later edit re-fires this sub-step while a date is genuinely absent (e.g. "never
+                # fertilized"), and a preserved date survives a disable→enable cycle untouched.
                 self._pending_fert_first = (
                     cleaned.get(CONF_FERTILIZATION_ENABLED) is True
+                    and not fertilization_was_enabled
                     and STATE_LAST_FERTILIZED not in current_opts
                 )
-                # Repotting: toggle just turned on AND no last_repotted yet
+                # Repotting: same three-part guard as fertilization.
                 self._pending_repot_first = (
                     cleaned.get(CONF_REPOTTING_ENABLED) is True
+                    and not repotting_was_enabled
                     and STATE_LAST_REPOTTED not in current_opts
                 )
 
@@ -912,6 +923,12 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
                 latin_was_enabled = bool(
                     current_opts.get(CONF_ENABLE_LATIN_NAME, entry.data.get(CONF_ENABLE_LATIN_NAME, False))
                 )
+                fertilization_was_enabled = bool(
+                    current_opts.get(CONF_FERTILIZATION_ENABLED, entry.data.get(CONF_ENABLE_FERTILIZATION, False))
+                )
+                repotting_was_enabled = bool(
+                    current_opts.get(CONF_REPOTTING_ENABLED, entry.data.get(CONF_ENABLE_REPOTTING, False))
+                )
                 self._pending_opts = merged
                 self._pending_image_first = (
                     self._pending_opts.get(CONF_ENABLE_IMAGE) is True and not image_was_enabled
@@ -921,10 +938,12 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
                 )
                 self._pending_fert_first = (
                     self._pending_opts.get(CONF_FERTILIZATION_ENABLED) is True
+                    and not fertilization_was_enabled
                     and STATE_LAST_FERTILIZED not in current_opts
                 )
                 self._pending_repot_first = (
                     self._pending_opts.get(CONF_REPOTTING_ENABLED) is True
+                    and not repotting_was_enabled
                     and STATE_LAST_REPOTTED not in current_opts
                 )
 
