@@ -62,11 +62,21 @@ entry/plant afterwards (**Settings → Devices & Services → Adaptive Plant →
 > **Note:** The **Repotted on** field accepts dates in `YYYY-MM-DD` format only (e.g. `2026-04-01`). Invalid entries are ignored and Mark repotted will fall back to today's date.
 
 ### 🖼️ Plant Image (optional)
-- Attach a `/local/` image path to display on dashboard cards. Can be changed via configuration after entry is created. I recommend creating a folder titled 'adaptive_plant' in your `/www/` folder and uploading your plant images there.
+Give a plant a photo to display on dashboard cards. There are two ways to do it — pick whichever you prefer, in the setup wizard or later via Configure:
+
+- **Upload a photo (recommended)** — choose a **PNG or JPEG** file directly in the wizard or options flow. The image is processed for you automatically (orientation corrected, downscaled to a max of 1024px, saved as JPEG) and written to `config/www/adaptive_plant/`. Uploaded images are managed by the integration: the old file is cleaned up automatically when you replace the photo, disable the image option, or remove the plant.
+- **Enter a `/local/` path** — point at an image you've placed yourself. I recommend creating a folder titled 'adaptive_plant' in your `/www/` folder and putting your plant images there.
 > **Example image pathway (w/ folder created) for card config:**  `/local/adaptive_plant/monstera.png`
 
 > **Example image pathway (without folder, uploaded directly into `/www/`) for card config:**  `/local/monstera.png`
+
+If you supply both an upload and a path at the same time, the **upload wins**.
+
 - Image **size** (px) and **shape** (circle / square, softly rounded) are configurable on the companion card via the visual editor or YAML. Set `image_size: 0` to hide plant photos entirely for clean text-only rows.
+
+> **📱 Uploading from an iPhone?** Photos you've taken are HEIC/HEIF, but iOS transcodes them to JPEG when you pick one through the file selector — so iPhone uploads work. A raw `.heic` file (e.g. dragged from a desktop) isn't supported and is rejected with an "invalid image" error.
+
+> **🏷️ A note on file names:** Uploaded images get auto-generated names — a 32-character hex string ending in `.jpg` — and those are the *only* files the integration ever deletes on its own. Hand-placed images are left completely untouched, **unless** you happen to give one a 32-character hex name ending in `.jpg` inside `/local/adaptive_plant/`, which would look like a managed file. Any normal name (`monstera.png`, `my_fern.jpg`) is perfectly safe.
 
 ### 🔬 Latin Name (optional)
 - Store the scientific name for each plant
@@ -120,12 +130,12 @@ entry/plant afterwards (**Settings → Devices & Services → Adaptive Plant →
    - Last fertilized date (Today / Yesterday / Custom / Haven't yet) *(if fertilization enabled)*
    - Last repotted date (Today / Yesterday / Custom / Haven't yet) *(if repotting enabled)*
    - Latin name *(if latin name enabled)*
-   - Image path *(if image enabled)*
+   - Image — upload a photo or enter a `/local/` path *(if image enabled)*
    - Moisture thresholds *(if a sensor was selected)*
 
 To edit any setting after setup, go to **Settings → Devices & Services → Adaptive Plant → Configure**.
 
-> **Tip**: To remove a label, latin name, or image path after setup, open Configure, clear the field, and save.
+> **Tip**: To remove a label, latin name, or image after setup, open Configure, clear the field (or, for an uploaded image, disable the image option), and save.
 
 ---
 
