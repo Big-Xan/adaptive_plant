@@ -507,8 +507,16 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
         self._config_entry = config_entry
         # Stash the moisture sensor choice from step 1 so step 2 knows what was picked
         self._pending_moisture_sensor: str | None = None
-        # Stash cleaned options while we run a sub-flow (fertilize/repot init)
+        # Stash cleaned options while we run a sub-flow (fertilize/repot init).
+        # _pending_opts holds ONLY the keys this flow is authoritative about this
+        # run (settings the user edited, tombstones, first-enable dates). It is no
+        # longer pre-merged with a snapshot of entry.options — _save() composes the
+        # final dict against a fresh read at write time (see issue #23).
         self._pending_opts: dict = {}
+        # Keys this flow deliberately *removes* this run (blanked settings,
+        # cleared thresholds, "never" dates). _save() pops these off the fresh
+        # base, but only when the flow didn't also set them this run.
+        self._flow_removed_keys: set[str] = set()
         # Flags set when a first-enable sub-flow is in progress
         self._pending_image_first: bool = False
         self._pending_latin_first: bool = False
@@ -524,6 +532,10 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
         current_opts = entry.options
 
         if user_input is not None:
+            # Fresh per submit — removal intent is rebuilt each run alongside
+            # _pending_opts, so a re-shown form (e.g. after an image error) never
+            # carries stale removals into the eventual save.
+            self._flow_removed_keys = set()
             # Detect label-clear intent up front (blank, whitespace-only, or
             # the literal word "null"). The cleanup loop further down only
             # catches blanks AND only runs on the no-moisture branch, so we
@@ -672,31 +684,34 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
                 return await self.async_step_moisture_options()
             else:
                 # Sensor cleared — tombstone the sensor and strip thresholds.
-                # The sensor key gets an empty-string tombstone (not a pop)
+                # The sensor key gets an empty-string tombstone (not a removal)
                 # because PlantData.moisture_sensor falls back to entry.data
-                # when the key is missing — popping would resurrect a sensor
+                # when the key is missing — removing it would resurrect a sensor
                 # chosen during the original setup wizard. The thresholds are
-                # popped: every moisture code path gates on moisture_sensor
-                # first, so their entry.data fallback is inert.
-                merged = {**current_opts, **cleaned}
-                for key in (CONF_DRY_THRESHOLD, CONF_WET_THRESHOLD):
-                    merged.pop(key, None)
-                merged[CONF_MOISTURE_SENSOR] = ""
+                # removed from the fresh base in _save(): every moisture code
+                # path gates on moisture_sensor first, so their entry.data
+                # fallback is inert.
+                cleaned[CONF_MOISTURE_SENSOR] = ""
+                cleaned.pop(CONF_DRY_THRESHOLD, None)
+                cleaned.pop(CONF_WET_THRESHOLD, None)
+                self._flow_removed_keys.add(CONF_DRY_THRESHOLD)
+                self._flow_removed_keys.add(CONF_WET_THRESHOLD)
                 # Explicit label clear — write an empty-string tombstone rather
-                # than popping the key. The PlantData.label property falls
+                # than removing the key. The PlantData.label property falls
                 # back to entry.data when CONF_LABEL is missing from options,
-                # so a pop leaves a stale value from setup visible. An empty
+                # so a removal leaves a stale value from setup visible. An empty
                 # string in options is treated as "cleared" by the property
                 # and shadows the entry.data fallback.
                 if clear_label:
-                    merged[CONF_LABEL] = ""
+                    cleaned[CONF_LABEL] = ""
                 # Also clear blanked fields — but skip keys we've already
                 # handled explicitly above. Tombstone keys (CONF_LABEL,
                 # CONF_LATIN_NAME, CONF_IMAGE_PATH, CONF_MOISTURE_SENSOR) are
-                # included because their empty-string tombstones written
-                # earlier are intentional — the loop would otherwise treat
-                # "" as a blank and delete them, falling back to stale
-                # entry.data values from the original setup wizard.
+                # included because their empty-string tombstones are intentional
+                # — without the skip they would be marked for removal and the
+                # fresh base would fall back to stale entry.data values from the
+                # original setup wizard. Blanked non-skip keys become removal
+                # intent for _save() rather than a delete off a stale snapshot.
                 _skip_clear = {
                     CONF_LABEL,
                     CONF_LATIN_NAME,
@@ -711,8 +726,8 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
                     CONF_ENABLE_IMAGE,
                 }
                 for k, v in user_input.items():
-                    if k not in _skip_clear and v in (None, "") and k in merged:
-                        del merged[k]
+                    if k not in _skip_clear and v in (None, ""):
+                        self._flow_removed_keys.add(k)
 
                 # ── First-enable detection ────────────────────────────────────
                 # Each fires when its toggle flips on in this save and the
@@ -733,7 +748,7 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
                 repotting_was_enabled = bool(
                     current_opts.get(CONF_REPOTTING_ENABLED, entry.data.get(CONF_ENABLE_REPOTTING, False))
                 )
-                self._pending_opts = merged
+                self._pending_opts = cleaned
                 self._pending_image_first = (
                     cleaned.get(CONF_ENABLE_IMAGE) is True and not image_was_enabled
                 )
@@ -930,8 +945,11 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
             if dry is not None and wet is not None and dry >= wet:
                 errors["base"] = "dry_above_wet"
             else:
-                merged = {
-                    **current_opts,
+                # Overlay the sensor + thresholds onto the flow-owned dict
+                # carried from step 1 (cleaned). No snapshot base here — _save()
+                # composes against a fresh read of entry.options at write time
+                # (issue #23), so runtime keys survive any gap before the save.
+                self._pending_opts = {
                     **self._pending_opts,
                     CONF_MOISTURE_SENSOR: self._pending_moisture_sensor,
                     CONF_DRY_THRESHOLD: dry,
@@ -939,11 +957,11 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
                 }
 
                 # Apply label clear carried from step 1 — write an empty-string
-                # tombstone rather than popping, so the PlantData.label
+                # tombstone rather than removing, so the PlantData.label
                 # property's fallback to entry.data doesn't surface a stale
                 # value set during the original setup wizard.
                 if self._pending_clear_label:
-                    merged[CONF_LABEL] = ""
+                    self._pending_opts[CONF_LABEL] = ""
 
                 # ── First-enable detection (same as in async_step_init) ───────
                 # Must run here too — when moisture options are collected first,
@@ -960,7 +978,6 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
                 repotting_was_enabled = bool(
                     current_opts.get(CONF_REPOTTING_ENABLED, entry.data.get(CONF_ENABLE_REPOTTING, False))
                 )
-                self._pending_opts = merged
                 self._pending_image_first = (
                     self._pending_opts.get(CONF_ENABLE_IMAGE) is True and not image_was_enabled
                 )
@@ -986,6 +1003,30 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
             errors=errors,
         )
 
+    # ── Single save chokepoint ────────────────────────────────────────────────
+
+    def _save(self) -> FlowResult:
+        """Write options through one chokepoint that composes against a fresh read.
+
+        Issue #23: the options flow used to snapshot entry.options early and save
+        that snapshot at the end, so any PlantData._persist() write landing in
+        between (a Mark Watered/Fertilized/Repotted, a health/notes edit, a
+        moisture-driven reschedule) was silently lost. Here the fresh, current
+        options are the base and _pending_opts overlays only the keys this flow
+        is authoritative about this run — so untouched runtime state can never be
+        clobbered. _flow_removed_keys carries deliberate removals (cleared
+        thresholds, blanked settings, "never" dates); a key the flow both removed
+        and set in the same run keeps its set value (the `not in _pending_opts`
+        guard). No new runtime key needs registering here: anything the flow
+        doesn't touch is preserved from the fresh base by default.
+        """
+        fresh = dict(self._config_entry.options)
+        final = {**fresh, **self._pending_opts}
+        for key in self._flow_removed_keys:
+            if key not in self._pending_opts:
+                final.pop(key, None)
+        return self.async_create_entry(title="", data=final)
+
     # ── First-enable sub-flow dispatcher ──────────────────────────────────────
 
     async def _route_first_enable(self) -> FlowResult:
@@ -995,7 +1036,7 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
         clear their own flag and call back here; the fertilization/repotting
         steps retain their existing chain (_after_fertilized_init → repot →
         save), so this dispatcher only fronts the chain and leaves that logic
-        untouched. When no flag is set, the merged options are written.
+        untouched. When no flag is set, the merged options are written via _save().
         """
         if self._pending_image_first:
             return await self.async_step_image_init()
@@ -1005,7 +1046,7 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
             return await self.async_step_fertilized_init()
         if self._pending_repot_first:
             return await self.async_step_repotted_init()
-        return self.async_create_entry(title="", data=self._pending_opts)
+        return self._save()
 
     async def async_step_image_init(self, user_input: dict | None = None) -> FlowResult:
         """Ask for the image (upload or path) on first enable via options — mirrors setup."""
@@ -1084,9 +1125,15 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
                 self._pending_opts[STATE_LAST_FERTILIZED] = last.isoformat()
                 self._pending_opts[STATE_NEXT_FERTILIZED] = (last + timedelta(days=interval)).isoformat()
             else:
-                # "never" — strip any stale dates that may have been carried into merged
+                # "never" — ensure no fertilization dates are written. Remove
+                # any flow-set value and record removal intent so _save() also
+                # strips a date present on the fresh base (defensive: on a true
+                # first-enable the fert entities don't exist yet, so none should
+                # be there, but this keeps "never" authoritative regardless).
                 self._pending_opts.pop(STATE_LAST_FERTILIZED, None)
                 self._pending_opts.pop(STATE_NEXT_FERTILIZED, None)
+                self._flow_removed_keys.add(STATE_LAST_FERTILIZED)
+                self._flow_removed_keys.add(STATE_NEXT_FERTILIZED)
             return await self._after_fertilized_init()
         return self.async_show_form(
             step_id="fertilized_init",
@@ -1122,7 +1169,7 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
         """Route to repotting first-enable if also needed, otherwise save."""
         if self._pending_repot_first:
             return await self.async_step_repotted_init()
-        return self.async_create_entry(title="", data=self._pending_opts)
+        return self._save()
 
     # ── Repotting first-enable sub-flow ───────────────────────────────────────
 
@@ -1140,9 +1187,12 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
                     last = today - timedelta(days=1)
                 self._pending_opts[STATE_LAST_REPOTTED] = last.isoformat()
             else:
-                # "never" — strip any stale date that may have been carried into merged
+                # "never" — ensure no repot date is written. Remove any flow-set
+                # value and record removal intent so _save() also strips a date on
+                # the fresh base (defensive; mirrors the fertilization "never" path).
                 self._pending_opts.pop(STATE_LAST_REPOTTED, None)
-            return self.async_create_entry(title="", data=self._pending_opts)
+                self._flow_removed_keys.add(STATE_LAST_REPOTTED)
+            return self._save()
         return self.async_show_form(
             step_id="repotted_init",
             data_schema=_last_repotted_schema(),
@@ -1159,7 +1209,7 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
                 errors["custom_repotted_date"] = "invalid_date"
             else:
                 self._pending_opts[STATE_LAST_REPOTTED] = custom_date
-                return self.async_create_entry(title="", data=self._pending_opts)
+                return self._save()
         return self.async_show_form(
             step_id="repotted_init_custom",
             data_schema=_last_repotted_custom_schema(),
