@@ -565,14 +565,28 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
             cleaned[CONF_REPOTTING_ENABLED] = bool(user_input.get(CONF_REPOTTING_ENABLED, False))
 
             # Latin name toggle — write explicitly, and handle the text field.
+            # The latin_name field is only rendered when latin was ALREADY enabled
+            # (latin_currently_enabled in the schema builder), so its submitted
+            # value is authoritative only when latin was on BOTH before and after
+            # this submit — mirroring the care-instructions handling below. Branch
+            # on the *stored* state, not key-presence: HA drops an absent/emptied
+            # Optional field from user_input, so on a re-enable (field never shown)
+            # the key is simply missing, and writing "" there would clobber the
+            # preserved name on the fresh base now that the latin_init re-prompt is
+            # guarded out. On a genuine first enable the field also isn't shown and
+            # latin_init collects the name instead.
             latin_enabled = bool(user_input.get(CONF_ENABLE_LATIN_NAME, False))
+            latin_was_active = bool(
+                current_opts.get(CONF_ENABLE_LATIN_NAME, entry.data.get(CONF_ENABLE_LATIN_NAME, False))
+            )
             cleaned[CONF_ENABLE_LATIN_NAME] = latin_enabled
-            if latin_enabled:
-                # Use key-presence check so empty string is treated as intentional clear
+            if latin_enabled and latin_was_active:
                 raw_latin = user_input.get(CONF_LATIN_NAME, "")
                 cleaned[CONF_LATIN_NAME] = raw_latin.strip() if raw_latin else ""
             else:
-                # Toggle off — remove stored latin name
+                # First enable (latin_init collects it) or toggle off — don't carry
+                # a value into cleaned; the stored name is preserved on the fresh
+                # base and only overwritten by an authoritative edit.
                 cleaned.pop(CONF_LATIN_NAME, None)
 
             # Care instructions toggle — write the flag explicitly. The stored
@@ -752,8 +766,17 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
                 self._pending_image_first = (
                     cleaned.get(CONF_ENABLE_IMAGE) is True and not image_was_enabled
                 )
+                # Latin: three-part guard mirroring fertilization/repotting, so a
+                # preserved name survives a disable→enable cycle without the
+                # latin_init prompt re-firing and overwriting it with a blank.
+                # Unlike the fert/repot dates (seeded into options on first load),
+                # a setup-time latin name lives in entry.data until edited, so the
+                # presence check must look at both options and data.
                 self._pending_latin_first = (
-                    cleaned.get(CONF_ENABLE_LATIN_NAME) is True and not latin_was_enabled
+                    cleaned.get(CONF_ENABLE_LATIN_NAME) is True
+                    and not latin_was_enabled
+                    and CONF_LATIN_NAME not in current_opts
+                    and CONF_LATIN_NAME not in entry.data
                 )
                 # Fertilization: toggle flipped on this save, wasn't already active, and no date yet.
                 # The not-already-active guard mirrors the image/latin gates above; without it any
@@ -981,8 +1004,12 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
                 self._pending_image_first = (
                     self._pending_opts.get(CONF_ENABLE_IMAGE) is True and not image_was_enabled
                 )
+                # Latin: see async_step_init for the dual-source rationale.
                 self._pending_latin_first = (
-                    self._pending_opts.get(CONF_ENABLE_LATIN_NAME) is True and not latin_was_enabled
+                    self._pending_opts.get(CONF_ENABLE_LATIN_NAME) is True
+                    and not latin_was_enabled
+                    and CONF_LATIN_NAME not in current_opts
+                    and CONF_LATIN_NAME not in entry.data
                 )
                 self._pending_fert_first = (
                     self._pending_opts.get(CONF_FERTILIZATION_ENABLED) is True
