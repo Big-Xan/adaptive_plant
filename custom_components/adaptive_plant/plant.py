@@ -65,6 +65,20 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
+def next_due(last_event: str | None, interval: int) -> str | None:
+    """Next due-date = last event date + interval days, or None if not computable.
+
+    Shared by the options flow and the interval number entities so editing an
+    interval through either door reschedules the stored next-due date the same way.
+    """
+    if not last_event:
+        return None
+    try:
+        return (date.fromisoformat(last_event) + timedelta(days=int(interval))).isoformat()
+    except (ValueError, TypeError):
+        return None
+
+
 class PlantData:
     """Encapsulates all state and logic for a single plant."""
 
@@ -451,7 +465,20 @@ class PlantData:
         await self._persist(updates)
 
     async def set_watering_interval(self, days: int) -> None:
-        await self._persist({OPT_WATERING_INTERVAL: int(days)})
+        # Reschedule next watering onto the new cadence right away, mirroring the
+        # options flow — otherwise the number entity is a second door to the same
+        # setting that leaves the next-due date stale until the next event. Only
+        # on an actual change (a no-op set must not discard a snooze/early-watering
+        # adjustment to the date) and only for schedule-driven plants: moisture
+        # plants are sensor-driven (next watering can be "today" when dry), so the
+        # sensor owns the date — this bows out like mark_watered / the fert-sync block.
+        days = int(days)
+        updates: dict = {OPT_WATERING_INTERVAL: days}
+        if days != self.watering_interval and not self.moisture_sensor:
+            new_next = next_due(self.last_watered, days)
+            if new_next:
+                updates[STATE_NEXT_WATERING] = new_next
+        await self._persist(updates)
 
     async def snooze_watering(self) -> None:
         """Push next watering and/or fertilization forward by 1 day if due or overdue.
@@ -533,7 +560,17 @@ class PlantData:
         })
 
     async def set_fertilization_interval(self, days: int) -> None:
-        await self._persist({OPT_FERTILIZATION_INTERVAL: int(days)})
+        # Mirror set_watering_interval — reschedule next fertilizing onto the new
+        # cadence so this number entity isn't a second door that leaves the date
+        # stale. No moisture guard: fertilization runs on its own schedule for
+        # every plant (mark_fertilized has no moisture bow-out, unlike watering).
+        days = int(days)
+        updates: dict = {OPT_FERTILIZATION_INTERVAL: days}
+        if days != self.fertilization_interval:
+            new_next = next_due(self.last_fertilized, days)
+            if new_next:
+                updates[STATE_NEXT_FERTILIZED] = new_next
+        await self._persist(updates)
 
     # ── Notes ────────────────────────────────────────────────────────────────────
 
