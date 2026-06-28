@@ -56,10 +56,14 @@
           "enable_latin_name": "Add a latin name field",
           "enable_image": "Show a plant image",
           "enable_repotting": "Track repotting",
-          "moisture_sensor": "Moisture sensor (optional)"
+          "moisture_sensor": "Moisture sensor (optional)",
+          "temperature_sensor": "Temperature sensor (optional)",
+          "humidity_sensor": "Humidity sensor (optional)"
         },
         "data_description": {
-          "moisture_sensor": "Select an existing sensor to drive automatic watering logic."
+          "moisture_sensor": "Select an existing sensor to drive automatic watering logic.",
+          "temperature_sensor": "Optional ambient temperature sensor to display on this plant.",
+          "humidity_sensor": "Optional ambient humidity sensor to display on this plant."
         }
       },
       "last_watered": {
@@ -178,7 +182,11 @@
           "moisture_sensor_enabled": "Enable moisture sensor",
           "moisture_sensor": "Moisture sensor",
           "dry_threshold": "Dry threshold (reschedule watering to today)",
-          "wet_threshold": "Wet threshold (auto-mark as watered)"
+          "wet_threshold": "Wet threshold (auto-mark as watered)",
+          "temperature_sensor_enabled": "Enable temperature sensor",
+          "temperature_sensor": "Temperature sensor",
+          "humidity_sensor_enabled": "Enable humidity sensor",
+          "humidity_sensor": "Humidity sensor"
         },
         "data_description": {
           "label": "Optional sublabel to group plants within an area (e.g. Left shelf, Window sill). Leave blank or enter 'null' to remove.",
@@ -189,6 +197,10 @@
           "care_instructions": "Free-form care notes shown read-only on the card. Type \\*\\*bold\\*\\* to make text **bold**. Line breaks are supported.",
           "moisture_sensor_enabled": "Toggle off to remove the moisture sensor and clear all thresholds.",
           "moisture_sensor": "Select a sensor to drive automatic watering logic.",
+          "temperature_sensor_enabled": "Toggle off to remove the ambient temperature sensor.",
+          "temperature_sensor": "Ambient temperature sensor to display on this plant (no effect on watering).",
+          "humidity_sensor_enabled": "Toggle off to remove the ambient humidity sensor.",
+          "humidity_sensor": "Ambient humidity sensor to display on this plant (no effect on watering).",
           "fertilization_sync_window": "When you mark this plant watered, an upcoming fertilization within this many days snaps onto the watering day so you can do both at once. 0 disables, leaving watering and fertilization intervals independent of one another. Keep it below the watering interval.",
           "image_upload": "Pick a photo from your device (PNG/JPEG). Takes priority over the path below."
         }
@@ -266,6 +278,8 @@
       "next_fertilized": { "name": "Next fertilization" },
       "days_until_fertilizing": { "name": "Days until fertilization" },
       "current_moisture": { "name": "Soil moisture" },
+      "current_temperature": { "name": "Temperature" },
+      "current_humidity": { "name": "Humidity" },
       "last_repotted": { "name": "Last repotted" }
     },
     "button": {

@@ -28,6 +28,8 @@ async def async_setup_entry(
         EarlyWateringCountSensor(plant, entry),
         SnoozeCountSensor(plant, entry),
         CurrentMoistureSensor(plant, entry),
+        CurrentTemperatureSensor(plant, entry),
+        CurrentHumiditySensor(plant, entry),
     ]
 
     if plant.enable_fertilization:
@@ -259,26 +261,25 @@ class DaysUntilFertilizingSensor(PlantSensorBase):
         return f"In {days} Days"
 
 
-class CurrentMoistureSensor(PlantSensorBase):
-    """Diagnostic sensor that mirrors the linked moisture sensor's current reading.
+class LinkedSensorMirror(PlantSensorBase):
+    """Diagnostic passthrough that mirrors a linked external sensor's reading.
 
-    Always created so it appears on the device page in the HA integration panel.
-    Disabled by default when no moisture sensor is configured; automatically
-    enabled once a sensor is assigned. The direct source subscription re-points
-    itself when the linked sensor is changed in options, so no entry reload is
-    required.
+    Generalises the moisture-mirror pattern for display-only environment
+    parameters. Subclasses set the device class / icon / translation key /
+    unique-id suffix and override `_linked_sensor_id` to return the linked
+    entity id from PlantData.
+
+    Always created so it shows on the device page; `available` gates whether a
+    reading is shown — unavailable when no sensor is linked or the source is
+    unavailable. The unit follows the source sensor so °C/°F (etc.) is honoured.
+    The direct source subscription re-points itself when the linked sensor is
+    changed in options, so no entry reload is required.
     """
 
-    _attr_translation_key = "current_moisture"
-    _attr_icon = "mdi:water-percent"
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
-    _attr_device_class = SensorDeviceClass.MOISTURE
     _attr_state_class = SensorStateClass.MEASUREMENT
-    _attr_native_unit_of_measurement = "%"
 
     def __init__(self, plant: PlantData, entry: ConfigEntry) -> None:
         super().__init__(plant, entry)
-        self._attr_unique_id = f"{entry.entry_id}_current_moisture"
         # Always enabled — availability is controlled dynamically via the
         # `available` property below. When no sensor is configured the entity
         # shows as unavailable rather than requiring manual enable/disable.
@@ -290,8 +291,12 @@ class CurrentMoistureSensor(PlantSensorBase):
         self._tracked_source_id: str | None = None
 
     @property
+    def _linked_sensor_id(self) -> str | None:
+        raise NotImplementedError
+
+    @property
     def native_value(self) -> float | None:
-        sensor_id = self._plant.moisture_sensor
+        sensor_id = self._linked_sensor_id
         if not sensor_id:
             return None
         state = self.hass.states.get(sensor_id)
@@ -302,16 +307,29 @@ class CurrentMoistureSensor(PlantSensorBase):
         except (ValueError, TypeError):
             return None
 
+    @property
+    def native_unit_of_measurement(self) -> str | None:
+        # Follow the source sensor's unit; fall back to the subclass default
+        # only when the source declares none.
+        sensor_id = self._linked_sensor_id
+        if sensor_id:
+            state = self.hass.states.get(sensor_id)
+            if state is not None:
+                unit = state.attributes.get("unit_of_measurement")
+                if unit:
+                    return unit
+        return self._attr_native_unit_of_measurement
+
     def _resubscribe_source(self) -> None:
         # (Re)point the direct source subscription at the currently-linked
         # sensor. Idempotent: a no-op while the id is unchanged, so it is cheap
         # to call on every PlantData notification.
         #
         # NOTE: do not remove this in favor of the PlantData listener alone.
-        # handle_moisture_change only persists on threshold crossings, so
-        # without this direct subscription the mirror (and the card) would go
-        # stale between crossings. Two subscriptions are intentional.
-        sensor_id = self._plant.moisture_sensor
+        # PlantData only persists on discrete events (moisture threshold
+        # crossings; nothing at all for the display-only mirrors), so without
+        # this direct subscription the mirror (and the card) would go stale.
+        sensor_id = self._linked_sensor_id
         if sensor_id == self._tracked_source_id:
             return
         if self._source_unsub is not None:
@@ -349,11 +367,65 @@ class CurrentMoistureSensor(PlantSensorBase):
     @property
     def available(self) -> bool:
         """Unavailable when no sensor is configured or the sensor is unavailable."""
-        sensor_id = self._plant.moisture_sensor
+        sensor_id = self._linked_sensor_id
         if not sensor_id:
             return False
         state = self.hass.states.get(sensor_id)
         return state is not None and state.state not in ("unknown", "unavailable")
+
+
+class CurrentMoistureSensor(LinkedSensorMirror):
+    """Mirrors the linked soil-moisture sensor (also drives watering logic)."""
+
+    _attr_translation_key = "current_moisture"
+    _attr_icon = "mdi:water-percent"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_device_class = SensorDeviceClass.MOISTURE
+    _attr_native_unit_of_measurement = "%"
+
+    def __init__(self, plant: PlantData, entry: ConfigEntry) -> None:
+        super().__init__(plant, entry)
+        self._attr_unique_id = f"{entry.entry_id}_current_moisture"
+
+    @property
+    def _linked_sensor_id(self) -> str | None:
+        return self._plant.moisture_sensor
+
+
+class CurrentTemperatureSensor(LinkedSensorMirror):
+    """Mirrors the linked ambient temperature sensor (display only)."""
+
+    _attr_translation_key = "current_temperature"
+    _attr_icon = "mdi:thermometer"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_device_class = SensorDeviceClass.TEMPERATURE
+    _attr_native_unit_of_measurement = "°C"
+
+    def __init__(self, plant: PlantData, entry: ConfigEntry) -> None:
+        super().__init__(plant, entry)
+        self._attr_unique_id = f"{entry.entry_id}_current_temperature"
+
+    @property
+    def _linked_sensor_id(self) -> str | None:
+        return self._plant.temperature_sensor
+
+
+class CurrentHumiditySensor(LinkedSensorMirror):
+    """Mirrors the linked ambient humidity sensor (display only)."""
+
+    _attr_translation_key = "current_humidity"
+    _attr_icon = "mdi:water-percent"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_device_class = SensorDeviceClass.HUMIDITY
+    _attr_native_unit_of_measurement = "%"
+
+    def __init__(self, plant: PlantData, entry: ConfigEntry) -> None:
+        super().__init__(plant, entry)
+        self._attr_unique_id = f"{entry.entry_id}_current_humidity"
+
+    @property
+    def _linked_sensor_id(self) -> str | None:
+        return self._plant.humidity_sensor
 
 
 class LastRepottedSensor(PlantSensorBase):
