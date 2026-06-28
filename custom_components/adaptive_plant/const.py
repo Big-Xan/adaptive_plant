@@ -34,6 +34,11 @@ CONF_IMAGE_UPLOAD = "image_upload"
 CONF_MOISTURE_SENSOR = "moisture_sensor"
 CONF_DRY_THRESHOLD = "dry_threshold"
 CONF_WET_THRESHOLD = "wet_threshold"
+# Environment passthrough sensors — display-only mirrors with no thresholds or
+# scheduling effect (unlike moisture, which drives the watering logic). Further
+# parameters (illuminance, conductivity, …) would follow the same pattern.
+CONF_TEMPERATURE_SENSOR = "temperature_sensor"
+CONF_HUMIDITY_SENSOR = "humidity_sensor"
 CONF_LABEL = "label"
 CONF_ENABLE_LATIN_NAME = "enable_latin_name"
 CONF_LATIN_NAME = "latin_name"

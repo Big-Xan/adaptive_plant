@@ -27,6 +27,7 @@ from .const import (
     CONF_ENABLE_REPOTTING,
     CONF_FERTILIZATION_ENABLED,
     CONF_HEALTH_PROMPT_INTERVAL,
+    CONF_HUMIDITY_SENSOR,
     CONF_IMAGE_PATH,
     CONF_IMAGE_UPLOAD,
     CONF_INITIAL_LAST_FERTILIZED,
@@ -39,6 +40,7 @@ from .const import (
     CONF_REPOTTING_ENABLED,
     CONF_RESOLVED_LAST_REPOTTED,
     CONF_SNOOZE_THRESHOLD,
+    CONF_TEMPERATURE_SENSOR,
     CONF_WET_THRESHOLD,
     DEFAULT_EARLY_WATERING_THRESHOLD,
     DEFAULT_FERT_SYNC_WINDOW,
@@ -96,6 +98,12 @@ def _features_schema(defaults: dict) -> vol.Schema:
         vol.Required(CONF_ENABLE_REPOTTING, default=defaults.get(CONF_ENABLE_REPOTTING, False)): selector.selector({"boolean": {}}),
         vol.Optional(CONF_MOISTURE_SENSOR): selector.selector(
             {"entity": {"domain": "sensor", "multiple": False}}
+        ),
+        vol.Optional(CONF_TEMPERATURE_SENSOR): selector.selector(
+            {"entity": {"domain": "sensor", "device_class": "temperature", "multiple": False}}
+        ),
+        vol.Optional(CONF_HUMIDITY_SENSOR): selector.selector(
+            {"entity": {"domain": "sensor", "device_class": "humidity", "multiple": False}}
         ),
     })
 
@@ -670,6 +678,23 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
             # Remove the toggle key — it's UI-only, not stored in options
             cleaned.pop("moisture_sensor_enabled", None)
 
+            # Environment passthrough sensors (temperature, humidity) — display
+            # only, no thresholds and no dedicated sub-step. Same toggle+picker+
+            # empty-string-tombstone pattern as the moisture sensor (the entity
+            # selector can't be blanked in the UI, so the toggle is the clear
+            # mechanism). Resolved into `cleaned` here, before the moisture branch
+            # splits, so it propagates through both the moisture-options path and
+            # the no-moisture merge below. Both keys are in _skip_clear so the ""
+            # tombstone is preserved rather than marked for removal.
+            for _enable_key, _sensor_key in (
+                ("temperature_sensor_enabled", CONF_TEMPERATURE_SENSOR),
+                ("humidity_sensor_enabled", CONF_HUMIDITY_SENSOR),
+            ):
+                _enabled = bool(user_input.get(_enable_key, False))
+                _raw = user_input.get(_sensor_key) if _enabled else None
+                cleaned.pop(_enable_key, None)
+                cleaned[_sensor_key] = _raw or ""
+
             if moisture_raw:
                 self._pending_moisture_sensor = moisture_raw
                 # Carry non-moisture fields forward so they're saved with the thresholds.
@@ -738,6 +763,8 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
                     CONF_FERTILIZATION_ENABLED,
                     CONF_REPOTTING_ENABLED,
                     CONF_ENABLE_IMAGE,
+                    CONF_TEMPERATURE_SENSOR,
+                    CONF_HUMIDITY_SENSOR,
                 }
                 for k, v in user_input.items():
                     if k not in _skip_clear and v in (None, ""):
@@ -952,6 +979,30 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
             schema_fields[
                 vol.Required(CONF_WET_THRESHOLD, default=defaults.get(CONF_WET_THRESHOLD, 70.0))
             ] = selector.selector({"number": {"min": 0, "max": 100, "step": 0.1, "mode": "box"}})
+
+        # Environment passthrough sensors (temperature, humidity) — toggle +
+        # device-class-filtered picker, same shape as the moisture sensor but
+        # with no thresholds (display only). Key-presence resolution mirrors
+        # PlantData so the empty-string tombstone written on disable shadows the
+        # stale setup-wizard value.
+        for _enable_key, _sensor_key, _device_class in (
+            ("temperature_sensor_enabled", CONF_TEMPERATURE_SENSOR, "temperature"),
+            ("humidity_sensor_enabled", CONF_HUMIDITY_SENSOR, "humidity"),
+        ):
+            if _sensor_key in current_opts:
+                _current_sensor = current_opts[_sensor_key] or None
+            else:
+                _current_sensor = entry.data.get(_sensor_key)
+            schema_fields[
+                vol.Required(_enable_key, default=bool(_current_sensor))
+            ] = selector.selector({"boolean": {}})
+            if _current_sensor:
+                _sensor_field = vol.Optional(_sensor_key, default=_current_sensor)
+            else:
+                _sensor_field = vol.Optional(_sensor_key)
+            schema_fields[_sensor_field] = selector.selector(
+                {"entity": {"domain": "sensor", "device_class": _device_class, "multiple": False}}
+            )
 
         return schema_fields
 
