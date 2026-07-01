@@ -54,8 +54,11 @@ from .const import (
     OWNED_IMAGE_PREFIX,
     STATE_LAST_FERTILIZED,
     STATE_LAST_REPOTTED,
+    STATE_LAST_WATERED,
     STATE_NEXT_FERTILIZED,
+    STATE_NEXT_WATERING,
 )
+from .plant import next_due
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -669,6 +672,51 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
             moisture_raw = user_input.get(CONF_MOISTURE_SENSOR) if moisture_enabled else None
             # Remove the toggle key — it's UI-only, not stored in options
             cleaned.pop("moisture_sensor_enabled", None)
+
+            # Reschedule the next due-date when an interval changed. next_watering
+            # / next_fertilized are stored values, otherwise only recomputed by
+            # runtime events (mark_watered, daily rollover, moisture handlers) —
+            # so without this an interval edit saves but the card's next-due date
+            # and days-until don't move until the next watering/fert event. We
+            # recompute from the last event date (shared next_due helper, same as
+            # the interval number entities) so the new cadence takes effect now.
+            # Written into `cleaned`, which both save paths overlay onto a fresh
+            # read in _save() — so the recomputed date wins over the stored one.
+            # This resets next_watering to last_watered + interval, discarding any
+            # in-period snooze / early-watering nudge to the date — an explicit
+            # interval change is a fresh reschedule; the counters are runtime
+            # state, left as-is. Watering bows out for moisture-sensor plants
+            # (`moisture_raw`): the sensor owns the date there and may have set it
+            # to "today" when dry — pushing it to last_watered + interval would
+            # wrongly defer a due watering (and clobber a concurrent sensor write).
+            # Fertilization has no such guard — it runs on its own schedule for
+            # every plant, mirroring set_fertilization_interval.
+            new_water_interval = user_input.get(OPT_WATERING_INTERVAL)
+            old_water_interval = current_opts.get(
+                OPT_WATERING_INTERVAL, entry.data.get(OPT_WATERING_INTERVAL)
+            )
+            if (
+                not moisture_raw
+                and new_water_interval is not None
+                and old_water_interval is not None
+                and new_water_interval != old_water_interval
+            ):
+                new_next = next_due(current_opts.get(STATE_LAST_WATERED), new_water_interval)
+                if new_next:
+                    cleaned[STATE_NEXT_WATERING] = new_next
+
+            new_fert_interval = user_input.get(OPT_FERTILIZATION_INTERVAL)
+            old_fert_interval = current_opts.get(
+                OPT_FERTILIZATION_INTERVAL, entry.data.get(OPT_FERTILIZATION_INTERVAL)
+            )
+            if (
+                new_fert_interval is not None
+                and old_fert_interval is not None
+                and new_fert_interval != old_fert_interval
+            ):
+                new_next = next_due(current_opts.get(STATE_LAST_FERTILIZED), new_fert_interval)
+                if new_next:
+                    cleaned[STATE_NEXT_FERTILIZED] = new_next
 
             if moisture_raw:
                 self._pending_moisture_sensor = moisture_raw
