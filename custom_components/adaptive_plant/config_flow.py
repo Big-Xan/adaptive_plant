@@ -58,7 +58,7 @@ from .const import (
     STATE_NEXT_FERTILIZED,
     STATE_NEXT_WATERING,
 )
-from .plant import next_due
+from .plant import next_due, PlantData
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -66,8 +66,28 @@ WATERING_DATE_TODAY = "today"
 WATERING_DATE_YESTERDAY = "yesterday"
 WATERING_DATE_CUSTOM = "custom"
 WATERING_DATE_NEVER = "never"
+WATERING_DATE_MIRROR = "mirror"
 
 CONF_INITIAL_LAST_REPOTTED = "initial_last_repotted"
+
+_MIRROR_LABEL = "Mirror parent plant (same as the plant you're duplicating)"
+
+
+def _date_select_options(never_label: str, include_mirror: bool) -> list[dict]:
+    """Build the option list shared by the three last-X date pickers.
+
+    When include_mirror is set (duplicate flow only), append a choice that
+    copies the corresponding date straight from the source plant.
+    """
+    options = [
+        {"value": WATERING_DATE_TODAY, "label": "Today"},
+        {"value": WATERING_DATE_YESTERDAY, "label": "Yesterday"},
+        {"value": WATERING_DATE_CUSTOM, "label": "Enter a custom date"},
+        {"value": WATERING_DATE_NEVER, "label": never_label},
+    ]
+    if include_mirror:
+        options.append({"value": WATERING_DATE_MIRROR, "label": _MIRROR_LABEL})
+    return options
 
 
 def _basic_schema(defaults: dict) -> vol.Schema:
@@ -103,16 +123,11 @@ def _features_schema(defaults: dict) -> vol.Schema:
     })
 
 
-def _last_watered_schema() -> vol.Schema:
+def _last_watered_schema(include_mirror: bool = False) -> vol.Schema:
     return vol.Schema({
         vol.Required(CONF_INITIAL_LAST_WATERED, default=WATERING_DATE_TODAY): selector.selector({
             "select": {
-                "options": [
-                    {"value": WATERING_DATE_TODAY, "label": "Today"},
-                    {"value": WATERING_DATE_YESTERDAY, "label": "Yesterday"},
-                    {"value": WATERING_DATE_CUSTOM, "label": "Enter a custom date"},
-                    {"value": WATERING_DATE_NEVER, "label": "Haven't watered yet"},
-                ],
+                "options": _date_select_options("Haven't watered yet", include_mirror),
                 "mode": "list",
             }
         }),
@@ -125,16 +140,11 @@ def _last_watered_custom_schema() -> vol.Schema:
     })
 
 
-def _last_fertilized_schema() -> vol.Schema:
+def _last_fertilized_schema(include_mirror: bool = False) -> vol.Schema:
     return vol.Schema({
         vol.Required(CONF_INITIAL_LAST_FERTILIZED, default=WATERING_DATE_TODAY): selector.selector({
             "select": {
-                "options": [
-                    {"value": WATERING_DATE_TODAY, "label": "Today"},
-                    {"value": WATERING_DATE_YESTERDAY, "label": "Yesterday"},
-                    {"value": WATERING_DATE_CUSTOM, "label": "Enter a custom date"},
-                    {"value": WATERING_DATE_NEVER, "label": "Haven't fertilized yet"},
-                ],
+                "options": _date_select_options("Haven't fertilized yet", include_mirror),
                 "mode": "list",
             }
         }),
@@ -147,16 +157,11 @@ def _last_fertilized_custom_schema() -> vol.Schema:
     })
 
 
-def _last_repotted_schema() -> vol.Schema:
+def _last_repotted_schema(include_mirror: bool = False) -> vol.Schema:
     return vol.Schema({
         vol.Required(CONF_INITIAL_LAST_REPOTTED, default=WATERING_DATE_TODAY): selector.selector({
             "select": {
-                "options": [
-                    {"value": WATERING_DATE_TODAY, "label": "Today"},
-                    {"value": WATERING_DATE_YESTERDAY, "label": "Yesterday"},
-                    {"value": WATERING_DATE_CUSTOM, "label": "Enter a custom date"},
-                    {"value": WATERING_DATE_NEVER, "label": "Haven't repotted yet"},
-                ],
+                "options": _date_select_options("Haven't repotted yet", include_mirror),
                 "mode": "list",
             }
         }),
@@ -288,8 +293,19 @@ class AdaptivePlantConfigFlow(ConfigFlow, domain=DOMAIN):
 
     def __init__(self) -> None:
         self._data: dict = {}
+        self._duplicating: bool = False
+        self._dup_source: ConfigEntry | None = None
+        self._dup_options: dict = {}
+        self._dup_dates: dict = {}
 
     async def async_step_user(self, user_input: dict | None = None) -> FlowResult:
+        # Offer the duplicate path only when there's an existing plant to copy;
+        # the very first plant goes straight to the add-a-plant form.
+        if self.hass.config_entries.async_entries(DOMAIN):
+            return self.async_show_menu(step_id="user", menu_options=["new", "duplicate"])
+        return await self.async_step_new()
+
+    async def async_step_new(self, user_input: dict | None = None) -> FlowResult:
         errors: dict[str, str] = {}
         if user_input is not None:
             plant_name = user_input.get(CONF_PLANT_NAME, "").strip()
@@ -299,7 +315,100 @@ class AdaptivePlantConfigFlow(ConfigFlow, domain=DOMAIN):
                 self._data.update({k: v for k, v in user_input.items() if v not in (None, "")})
                 self._data[CONF_PLANT_NAME] = plant_name
                 return await self.async_step_features()
-        return self.async_show_form(step_id="user", data_schema=_basic_schema(self._data), errors=errors)
+        return self.async_show_form(step_id="new", data_schema=_basic_schema(self._data), errors=errors)
+
+    async def async_step_duplicate(self, user_input: dict | None = None) -> FlowResult:
+        entries = self.hass.config_entries.async_entries(DOMAIN)
+        if user_input is not None:
+            source_id = user_input["source_entry"]
+            self._dup_source = next((e for e in entries if e.entry_id == source_id), None)
+            if self._dup_source is None:
+                return self.async_abort(reason="source_gone")
+            return await self.async_step_duplicate_name()
+        options = [{"value": e.entry_id, "label": e.title} for e in entries]
+        schema = vol.Schema({
+            vol.Required("source_entry"): selector.selector(
+                {"select": {"options": options, "mode": "dropdown"}}
+            ),
+        })
+        return self.async_show_form(step_id="duplicate", data_schema=schema)
+
+    async def async_step_duplicate_name(self, user_input: dict | None = None) -> FlowResult:
+        errors: dict[str, str] = {}
+        source = self._dup_source
+        if source is None:
+            return self.async_abort(reason="source_gone")
+        if user_input is not None:
+            plant_name = user_input.get(CONF_PLANT_NAME, "").strip()
+            if not plant_name:
+                errors[CONF_PLANT_NAME] = "name_required"
+            else:
+                self._seed_from_source(source)
+                self._data[CONF_PLANT_NAME] = plant_name
+                self._duplicating = True
+                return await self.async_step_last_watered()
+        schema = vol.Schema({
+            vol.Required(CONF_PLANT_NAME, default=source.title): selector.selector({"text": {}}),
+        })
+        return self.async_show_form(step_id="duplicate_name", data_schema=schema, errors=errors)
+
+    def _seed_from_source(self, source: ConfigEntry) -> None:
+        """Snapshot the source plant's care recipe into the new entry.
+
+        Settings only. The lived history (watering/fertilization/repotting
+        dates, adaptive counters, health, notes text) is deliberately left out
+        so the duplicate starts clean — __init__ seeds a fresh health value and
+        check-in clock precisely because those keys are absent here. The
+        moisture sensor and its thresholds are never copied (two plants must
+        not share one probe). Care instructions are read by PlantData from
+        entry.options only, so they are staged in self._dup_options and applied
+        by _create_entry. Source dates are captured for the optional "Mirror
+        parent plant" date choice.
+        """
+        src = PlantData(self.hass, source)
+        d = self._data
+
+        if src.area:
+            d[CONF_AREA] = src.area
+        if src.label:
+            d[CONF_LABEL] = src.label
+        d[CONF_EARLY_WATERING_THRESHOLD] = src.early_watering_threshold
+        d[CONF_SNOOZE_THRESHOLD] = src.snooze_threshold
+        d[CONF_HEALTH_PROMPT_INTERVAL] = src.health_prompt_interval
+        d[OPT_WATERING_INTERVAL] = src.watering_interval
+
+        d[CONF_ENABLE_FERTILIZATION] = src.enable_fertilization
+        d[CONF_ENABLE_NOTES] = src.enable_notes
+        d[CONF_ENABLE_LATIN_NAME] = src.enable_latin_name
+        d[CONF_ENABLE_REPOTTING] = src.enable_repotting
+        d[CONF_ENABLE_IMAGE] = src.enable_image
+
+        if src.enable_fertilization:
+            d[OPT_FERTILIZATION_INTERVAL] = src.fertilization_interval
+            d[OPT_FERT_SYNC_WINDOW] = src.fertilization_sync_window
+        if src.enable_latin_name and src.latin_name:
+            d[CONF_LATIN_NAME] = src.latin_name
+
+        # Image (plan A): copy a hand-placed /local path verbatim; never copy an
+        # owned (uploaded) file, since two entries sharing one managed file would
+        # let cleanup delete it out from under the other. When the source's image
+        # is owned, leave image enabled but pathless so the user can upload the
+        # duplicate's own photo.
+        if src.enable_image and src.image_path and not is_owned_image_path(src.image_path):
+            d[CONF_IMAGE_PATH] = src.image_path
+
+        # Care instructions live in entry.options (PlantData reads them there only).
+        if src.enable_care_instructions:
+            self._dup_options[CONF_ENABLE_CARE_INSTRUCTIONS] = True
+            if src.care_instructions:
+                self._dup_options[CONF_CARE_INSTRUCTIONS] = src.care_instructions
+
+        # Captured for the "Mirror parent plant" date option.
+        self._dup_dates = {
+            "watered": (src.last_watered, src.next_watering),
+            "fertilized": (src.last_fertilized, src.next_fertilized),
+            "repotted": src.last_repotted,
+        }
 
     async def async_step_features(self, user_input: dict | None = None) -> FlowResult:
         if user_input is not None:
@@ -315,11 +424,16 @@ class AdaptivePlantConfigFlow(ConfigFlow, domain=DOMAIN):
             self._data[CONF_INITIAL_LAST_WATERED] = selection
             if selection == WATERING_DATE_CUSTOM:
                 return await self.async_step_last_watered_custom()
+            if selection == WATERING_DATE_MIRROR:
+                last, nxt = self._dup_dates.get("watered", (None, None))
+                self._data["_resolved_last_watered"] = last
+                self._data["_resolved_next_watering"] = nxt or date.today().isoformat()
+                return await self._after_watering()
             last, nxt = _resolve_date(selection, None, self._data.get(OPT_WATERING_INTERVAL, DEFAULT_WATERING_INTERVAL))
             self._data["_resolved_last_watered"] = last
             self._data["_resolved_next_watering"] = nxt
             return await self._after_watering()
-        return self.async_show_form(step_id="last_watered", data_schema=_last_watered_schema())
+        return self.async_show_form(step_id="last_watered", data_schema=_last_watered_schema(self._duplicating))
 
     async def async_step_last_watered_custom(self, user_input: dict | None = None) -> FlowResult:
         errors: dict[str, str] = {}
@@ -337,6 +451,14 @@ class AdaptivePlantConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(step_id="last_watered_custom", data_schema=_last_watered_custom_schema(), errors=errors)
 
     async def _after_watering(self) -> FlowResult:
+        if self._duplicating:
+            # Recipe (incl. intervals, latin, image) is already copied and
+            # moisture is excluded, so only the remaining date prompts run.
+            if self._data.get(CONF_ENABLE_FERTILIZATION):
+                return await self.async_step_last_fertilized()
+            if self._data.get(CONF_ENABLE_REPOTTING):
+                return await self.async_step_last_repotted()
+            return self._create_entry()
         if self._data.get(CONF_ENABLE_FERTILIZATION):
             return await self.async_step_fertilize()
         if self._data.get(CONF_ENABLE_REPOTTING):
@@ -361,11 +483,16 @@ class AdaptivePlantConfigFlow(ConfigFlow, domain=DOMAIN):
             self._data[CONF_INITIAL_LAST_FERTILIZED] = selection
             if selection == WATERING_DATE_CUSTOM:
                 return await self.async_step_last_fertilized_custom()
+            if selection == WATERING_DATE_MIRROR:
+                last, nxt = self._dup_dates.get("fertilized", (None, None))
+                self._data["_resolved_last_fertilized"] = last
+                self._data["_resolved_next_fertilized"] = nxt or date.today().isoformat()
+                return await self._after_fertilizing()
             last, nxt = _resolve_date(selection, None, self._data.get(OPT_FERTILIZATION_INTERVAL, DEFAULT_FERTILIZATION_INTERVAL))
             self._data["_resolved_last_fertilized"] = last
             self._data["_resolved_next_fertilized"] = nxt
             return await self._after_fertilizing()
-        return self.async_show_form(step_id="last_fertilized", data_schema=_last_fertilized_schema())
+        return self.async_show_form(step_id="last_fertilized", data_schema=_last_fertilized_schema(self._duplicating))
 
     async def async_step_last_fertilized_custom(self, user_input: dict | None = None) -> FlowResult:
         errors: dict[str, str] = {}
@@ -383,6 +510,10 @@ class AdaptivePlantConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(step_id="last_fertilized_custom", data_schema=_last_fertilized_custom_schema(), errors=errors)
 
     async def _after_fertilizing(self) -> FlowResult:
+        if self._duplicating:
+            if self._data.get(CONF_ENABLE_REPOTTING):
+                return await self.async_step_last_repotted()
+            return self._create_entry()
         if self._data.get(CONF_ENABLE_REPOTTING):
             return await self.async_step_last_repotted()
         if self._data.get(CONF_ENABLE_LATIN_NAME):
@@ -399,6 +530,11 @@ class AdaptivePlantConfigFlow(ConfigFlow, domain=DOMAIN):
             self._data[CONF_INITIAL_LAST_REPOTTED] = selection
             if selection == WATERING_DATE_CUSTOM:
                 return await self.async_step_last_repotted_custom()
+            if selection == WATERING_DATE_MIRROR:
+                src_repot = self._dup_dates.get("repotted")
+                if src_repot:
+                    self._data[CONF_RESOLVED_LAST_REPOTTED] = src_repot
+                return await self._after_repotting()
             if selection != WATERING_DATE_NEVER:
                 today = date.today()
                 if selection == WATERING_DATE_TODAY:
@@ -408,7 +544,7 @@ class AdaptivePlantConfigFlow(ConfigFlow, domain=DOMAIN):
                 self._data[CONF_RESOLVED_LAST_REPOTTED] = last.isoformat()
             # "never" → leave CONF_RESOLVED_LAST_REPOTTED absent
             return await self._after_repotting()
-        return self.async_show_form(step_id="last_repotted", data_schema=_last_repotted_schema())
+        return self.async_show_form(step_id="last_repotted", data_schema=_last_repotted_schema(self._duplicating))
 
     async def async_step_last_repotted_custom(self, user_input: dict | None = None) -> FlowResult:
         errors: dict[str, str] = {}
@@ -428,6 +564,8 @@ class AdaptivePlantConfigFlow(ConfigFlow, domain=DOMAIN):
         )
 
     async def _after_repotting(self) -> FlowResult:
+        if self._duplicating:
+            return self._create_entry()
         if self._data.get(CONF_ENABLE_LATIN_NAME):
             return await self.async_step_latin_name()
         if self._data.get(CONF_ENABLE_IMAGE):
@@ -495,6 +633,10 @@ class AdaptivePlantConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(step_id="moisture", data_schema=_moisture_schema(self._data), errors=errors)
 
     def _create_entry(self) -> FlowResult:
+        if self._duplicating and self._dup_options:
+            return self.async_create_entry(
+                title=self._data[CONF_PLANT_NAME], data=self._data, options=self._dup_options
+            )
         return self.async_create_entry(title=self._data[CONF_PLANT_NAME], data=self._data)
 
     @staticmethod
