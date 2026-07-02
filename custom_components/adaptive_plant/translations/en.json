@@ -3,6 +3,13 @@
   "config": {
     "step": {
       "user": {
+        "title": "Adaptive Plant",
+        "menu_options": {
+          "new": "Add a plant",
+          "duplicate": "Duplicate an existing plant"
+        }
+      },
+      "new": {
         "title": "Add a Plant",
         "description": "Set up basic care settings for your plant.",
         "data": {
@@ -24,6 +31,20 @@
           "early_watering_threshold": "How many early waterings before the interval is shortened by 1 day.",
           "snooze_threshold": "How many consecutive periods snoozed before the interval is increased by 1 day.",
           "health_prompt_interval_days": "How many days before a health check-in notification is sent."
+        }
+      },
+      "duplicate": {
+        "title": "Duplicate a Plant",
+        "description": "Choose an existing plant to copy. Its care recipe — intervals, thresholds, enabled features, latin name, and care instructions — is copied. Watering and care history, health, and any moisture sensor are not.",
+        "data": {
+          "source_entry": "Plant to duplicate"
+        }
+      },
+      "duplicate_name": {
+        "title": "Name the Duplicate",
+        "description": "Give the new plant a name. The same name as the original is fine — Home Assistant keeps the two plants separate.",
+        "data": {
+          "plant_name": "Plant name"
         }
       },
       "features": {
@@ -128,7 +149,8 @@
       "invalid_date": "Please enter a valid date."
     },
     "abort": {
-      "already_configured": "This plant is already configured."
+      "already_configured": "This plant is already configured.",
+      "source_gone": "The plant you chose to duplicate is no longer available."
     }
   },
   "options": {
