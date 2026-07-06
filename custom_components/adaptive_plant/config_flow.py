@@ -12,6 +12,7 @@ from homeassistant.components.file_upload import process_uploaded_file
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlow
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import selector
 
 from .const import (
@@ -368,8 +369,18 @@ class AdaptivePlantConfigFlow(ConfigFlow, domain=DOMAIN):
         src = PlantData(self.hass, source)
         d = self._data
 
-        if src.area:
-            d[CONF_AREA] = src.area
+        # Seed the duplicate's area from the parent's CURRENT device-registry
+        # area, not entry.data's creation-time snapshot — users move devices
+        # between areas after setup, and the registry is the source of truth
+        # (the snapshot is only applied once, at first creation). A parent
+        # whose area was deliberately cleared duplicates as area-less; the
+        # snapshot is used only if the parent's device can't be found.
+        device = dr.async_get(self.hass).async_get_device(
+            identifiers={(DOMAIN, source.entry_id)}
+        )
+        current_area = device.area_id if device is not None else src.area
+        if current_area:
+            d[CONF_AREA] = current_area
         if src.label:
             d[CONF_LABEL] = src.label
         d[CONF_EARLY_WATERING_THRESHOLD] = src.early_watering_threshold
