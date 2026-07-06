@@ -264,7 +264,9 @@ class CurrentMoistureSensor(PlantSensorBase):
 
     Always created so it appears on the device page in the HA integration panel.
     Disabled by default when no moisture sensor is configured; automatically
-    enabled once a sensor is assigned (requires entry reload after options save).
+    enabled once a sensor is assigned. The direct source subscription re-points
+    itself when the linked sensor is changed in options, so no entry reload is
+    required.
     """
 
     _attr_translation_key = "current_moisture"
@@ -281,6 +283,11 @@ class CurrentMoistureSensor(PlantSensorBase):
         # `available` property below. When no sensor is configured the entity
         # shows as unavailable rather than requiring manual enable/disable.
         self._attr_entity_registry_enabled_default = True
+        # Live subscription to the linked source sensor, managed explicitly so
+        # it can be re-pointed when the linked sensor is changed in options
+        # (the entry is not reloaded on an options save).
+        self._source_unsub = None
+        self._tracked_source_id: str | None = None
 
     @property
     def native_value(self) -> float | None:
@@ -295,25 +302,45 @@ class CurrentMoistureSensor(PlantSensorBase):
         except (ValueError, TypeError):
             return None
 
+    def _resubscribe_source(self) -> None:
+        # (Re)point the direct source subscription at the currently-linked
+        # sensor. Idempotent: a no-op while the id is unchanged, so it is cheap
+        # to call on every PlantData notification.
+        #
+        # NOTE: do not remove this in favor of the PlantData listener alone.
+        # handle_moisture_change only persists on threshold crossings, so
+        # without this direct subscription the mirror (and the card) would go
+        # stale between crossings. Two subscriptions are intentional.
+        sensor_id = self._plant.moisture_sensor
+        if sensor_id == self._tracked_source_id:
+            return
+        if self._source_unsub is not None:
+            self._source_unsub()
+            self._source_unsub = None
+        self._tracked_source_id = sensor_id
+        if sensor_id:
+            self._source_unsub = async_track_state_change_event(
+                self.hass, [sensor_id], self._on_sensor_update
+            )
+
     async def async_added_to_hass(self) -> None:
         # Subscribe to PlantData listener updates (e.g. options changes)
         await super().async_added_to_hass()
-        # Also subscribe directly to the underlying sensor so the entity
-        # updates in real time with every new reading, not just when the
-        # integration writes to options.
-        #
-        # NOTE: do not remove this in favor of the PlantData listener alone.
-        # PlantData.handle_moisture_change only persists state on threshold
-        # crossings, so without this direct subscription the mirror sensor
-        # (and the card) would go stale between crossings. Two subscriptions
-        # are intentional.
-        sensor_id = self._plant.moisture_sensor
-        if sensor_id:
-            self.async_on_remove(
-                async_track_state_change_event(
-                    self.hass, [sensor_id], self._on_sensor_update
-                )
-            )
+        self._resubscribe_source()
+
+    async def async_will_remove_from_hass(self) -> None:
+        await super().async_will_remove_from_hass()
+        if self._source_unsub is not None:
+            self._source_unsub()
+            self._source_unsub = None
+
+    @callback
+    def _on_plant_update(self) -> None:
+        # An options save fires this via PlantData._notify_listeners. Re-point
+        # the source subscription first so a changed linked sensor keeps
+        # updating live without an entry reload, then render.
+        self._resubscribe_source()
+        self.async_write_ha_state()
 
     @callback
     def _on_sensor_update(self, event) -> None:
