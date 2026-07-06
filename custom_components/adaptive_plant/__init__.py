@@ -146,6 +146,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     plant = PlantData(hass, entry)
     hass.data[DOMAIN][entry.entry_id] = plant
 
+    # The wizard's area choice is applied ONCE, when the device is first
+    # created (suggested-area semantics). Capture existence before platform
+    # setup: the device registry is persistent, so a device found here means
+    # this is not the entry's first-ever load and the user's current area
+    # assignment (including a deliberately cleared one) must be respected —
+    # re-applying entry.data's snapshot on every load reverts area changes
+    # made on the device page.
+    dev_reg = dr.async_get(hass)
+    device_preexisting = (
+        dev_reg.async_get_device(identifiers={(DOMAIN, entry.entry_id)}) is not None
+    )
+
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     # ── Startup moisture check ───────────────────────────────────────────────
@@ -154,10 +166,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.async_create_task(_startup_moisture_check())
 
-    # ── Assign device to area if one was selected ────────────────────────────
+    # ── Assign device to area on first creation only ─────────────────────────
     area_id: str | None = entry.data.get(CONF_AREA)
-    if area_id:
-        dev_reg = dr.async_get(hass)
+    if area_id and not device_preexisting:
         device = dev_reg.async_get_device(identifiers={(DOMAIN, entry.entry_id)})
         if device:
             dev_reg.async_update_device(device.id, area_id=area_id)
