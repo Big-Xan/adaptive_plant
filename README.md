@@ -28,6 +28,7 @@ A fully local, event-driven Home Assistant custom integration for tracking and m
 - **Adaptive & customizable interval extension** — if you consistently snooze watering, the interval automatically lengthens
 - Snooze watering by one day without resetting the period
 - Sensors show human-readable status: `Today`, `In 3 Days`, `2 Days Overdue`
+- **Changing an interval reschedules immediately** — editing a watering or fertilization interval (via the number entity or Configure) recomputes the next due date on the spot (last done + new interval). Moisture-sensor plants keep their watering date sensor-managed; fertilization reschedules for every plant.
 
 ### 🌿 Plant Health
 - Health select entity: `Excellent`, `Good`, `Poor`, `Sick`
@@ -41,7 +42,7 @@ A fully local, event-driven Home Assistant custom integration for tracking and m
 - **Sync to watering day (optional)** — set a sync window of `1`–`6` days and marking a plant watered will snap an upcoming fertilization that falls within that window onto the same day, so you water and fertilize in one go. Off by default (`0`, fully independent intervals). It never delays a fertilization that's already due or overdue, and is skipped for plants with moisture-sensors enabled. Set it under **Fertilization settings** (at setup or via Configure) — keep it below your watering interval.
 - Can be enabled on any plant after setup via Configure — you'll be prompted for the last fertilized date when first enabled
 - When enabling fertilization on an existing plant via Configure, reload the
-entry/plant afterwards (**Settings → Devices & Services → Adaptive Plant →⋮ → Reload**) to create the fertilization entities. Once reloaded, open Configure again to set your desired interval — the Fertilization interval field appears once fertilization is active. Then press **Mark fertilized** once for the interval to take effect and for Days until fertilization to calculate correctly.
+entry/plant afterwards (**Settings → Devices & Services → Adaptive Plant →⋮ → Reload**) to create the fertilization entities. Once reloaded, open Configure again to set your desired interval — the Fertilization interval field appears once fertilization is active. Changing the interval takes effect immediately: the next fertilization is rescheduled from the last fertilized date you entered when enabling.
 
 ### 💧 Moisture Sensor Integration (optional)
 - Link any existing sensor entity
@@ -98,9 +99,20 @@ If you supply both an upload and a path at the same time, the **upload wins**.
 
 ### 🏠 Area & Label Support
 - Assign each plant to a Home Assistant area during setup
+- The area can be changed — or cleared — at any time after setup from the plant's edit device page (pencil icon on integration page).
 - Optionally add a **label** (e.g. `Left shelf`, `Window sill`) to group plants within an area
 - Labels can be added, changed, or removed at any time via the integration's settings
 - Unlabelled plants always appear first within their area on the companion card.
+
+### 🌱 Duplicate a Plant
+Do you also propagate your plants? When you already have **at least one plant already set up**, adding a new one opens a small menu: create a plant from scratch, or **duplicate an existing plant**.
+
+- Duplicating copies the plant's care *recipe*: watering interval (the current, adapted value), adaptive thresholds, enabled features, fertilization settings, latin name, care instructions, area, and label
+- The lived history starts fresh: health resets to Good with a new check-in clock, adaptive counters at zero, notes empty
+- In each "last watered / fertilized / repotted" date step you can pick **Mirror parent plant** to carry the parent's dates over verbatim instead of entering your own
+- A moisture sensor and its thresholds are **never copied** — two plants shouldn't share one probe. Link a sensor on the duplicate afterwards via Configure.
+- An *uploaded* photo **isn't** shared between plants — the duplicate keeps the image feature enabled so you can upload its own. A hand-placed `/local/` path **is** copied as-is; shared files are safe and never touched by cleanup.
+- Duplicates land in the parent's *current* area (as shown on its device page).
 
 ---
 
@@ -123,12 +135,13 @@ If you supply both an upload and a path at the same time, the **upload wins**.
 
 1. Go to **Settings → Devices & Services → Add Integration**
 2. Search for **Adaptive Plant**
-3. Follow the setup wizard:
+3. If you already have plants set up, a menu appears first: **Add a plant** (full wizard) or **Duplicate an existing plant** (see [Duplicate a Plant](#-duplicate-a-plant))
+4. Follow the setup wizard:
    - Plant name, area, optional label, watering interval, adaptive thresholds
    - Optional features (fertilization, notes, latin name, image, repotting, moisture sensor)
-   - Last watered date (Today / Yesterday / Custom / Haven't yet)
-   - Last fertilized date (Today / Yesterday / Custom / Haven't yet) *(if fertilization enabled)*
-   - Last repotted date (Today / Yesterday / Custom / Haven't yet) *(if repotting enabled)*
+   - Last watered date (Today / Yesterday / Custom / Haven't yet — plus Mirror parent plant when duplicating)
+   - Last fertilized date (same options) *(if fertilization enabled)*
+   - Last repotted date (same options) *(if repotting enabled)*
    - Latin name *(if latin name enabled)*
    - Image — upload a photo or enter a `/local/` path *(if image enabled)*
    - Moisture thresholds *(if a sensor was selected)*
