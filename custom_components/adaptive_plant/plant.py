@@ -26,6 +26,7 @@ from .const import (
     CONF_ENABLE_REPOTTING,
     CONF_FERTILIZATION_ENABLED,
     CONF_HEALTH_PROMPT_INTERVAL,
+    CONF_HUMIDITY_SENSOR,
     CONF_IMAGE_PATH,
     CONF_LABEL,
     CONF_LATIN_NAME,
@@ -34,6 +35,7 @@ from .const import (
     CONF_PLANT_NAME,
     CONF_REPOTTING_ENABLED,
     CONF_SNOOZE_THRESHOLD,
+    CONF_TEMPERATURE_SENSOR,
     CONF_WET_THRESHOLD,
     DEFAULT_EARLY_WATERING_THRESHOLD,
     DEFAULT_FERT_SYNC_WINDOW,
@@ -220,6 +222,24 @@ class PlantData:
     def wet_threshold(self) -> float | None:
         val = self._entry.options.get(CONF_WET_THRESHOLD) if CONF_WET_THRESHOLD in self._entry.options else self._entry.data.get(CONF_WET_THRESHOLD)
         return float(val) if val is not None else None
+
+    @property
+    def temperature_sensor(self) -> str | None:
+        # Display-only passthrough. Same key-presence + empty-string-tombstone
+        # resolution as moisture_sensor so toggling it off in the options flow
+        # shadows the entry.data value chosen during the setup wizard.
+        if CONF_TEMPERATURE_SENSOR in self._entry.options:
+            val = self._entry.options[CONF_TEMPERATURE_SENSOR]
+            return val if val else None
+        return self._entry.data.get(CONF_TEMPERATURE_SENSOR)
+
+    @property
+    def humidity_sensor(self) -> str | None:
+        # Display-only passthrough; see temperature_sensor.
+        if CONF_HUMIDITY_SENSOR in self._entry.options:
+            val = self._entry.options[CONF_HUMIDITY_SENSOR]
+            return val if val else None
+        return self._entry.data.get(CONF_HUMIDITY_SENSOR)
 
     # ── Mutable config ───────────────────────────────────────────────────────────
 

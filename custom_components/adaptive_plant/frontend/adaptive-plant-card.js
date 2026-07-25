@@ -1,4 +1,4 @@
-// Adaptive Plant Card v19.2
+// Adaptive Plant Card v19.3 — temperature/humidity passthrough detail rows
 
 class AdaptivePlantCard extends HTMLElement {
   constructor() {
@@ -498,6 +498,21 @@ class AdaptivePlantCard extends HTMLElement {
         if (!isNaN(parsed)) moistureVal = parsed;
       }
 
+      // Ambient temperature / humidity passthrough mirrors — display only.
+      // null when not configured or unavailable; unit follows the source sensor.
+      var tempSt   = st('_temperature');
+      var tempVal  = null, tempUnit = '°C';
+      if (tempSt && tempSt.state && tempSt.state !== 'unavailable' && tempSt.state !== 'unknown') {
+        var tParsed = parseFloat(tempSt.state);
+        if (!isNaN(tParsed)) { tempVal = tParsed; tempUnit = (tempSt.attributes && tempSt.attributes.unit_of_measurement) || '°C'; }
+      }
+      var humSt    = st('_humidity');
+      var humVal   = null, humUnit = '%';
+      if (humSt && humSt.state && humSt.state !== 'unavailable' && humSt.state !== 'unknown') {
+        var hParsed = parseFloat(humSt.state);
+        if (!isNaN(hParsed)) { humVal = hParsed; humUnit = (humSt.attributes && humSt.attributes.unit_of_measurement) || '%'; }
+      }
+
       // Latin / scientific name — null if entity absent or unavailable
       var latinSt   = st('_latin_name');
       var latinName = (latinSt && latinSt.state && latinSt.state !== 'unknown' && latinSt.state !== 'unavailable')
@@ -528,6 +543,12 @@ class AdaptivePlantCard extends HTMLElement {
         repottedDateInput:    (st('_repotted_on') && st('_repotted_on').state && st('_repotted_on').state !== 'unknown') ? st('_repotted_on').state : '',
         moistureVal:          moistureVal,   // float or null
         hasMoisture:          moistureVal !== null,
+        temperatureVal:       tempVal,       // float or null
+        temperatureUnit:      tempUnit,
+        hasTemperature:       tempVal !== null,
+        humidityVal:          humVal,        // float or null
+        humidityUnit:         humUnit,
+        hasHumidity:          humVal !== null,
         latinName:            latinName,     // string or null
         careInstructions:     nwAt.care_instructions || null,
       };
@@ -829,6 +850,8 @@ class AdaptivePlantCard extends HTMLElement {
           var detail = '<div class="plant-detail">' +
             (p.nextWatering   ? '<div class="detail-row"><span class="detail-label">Next watering</span><span class="detail-value">' + self._esc(p.nextWatering) + '</span></div>' : '') +
             (p.hasMoisture    ? '<div class="detail-row"><span class="detail-label">Soil moisture</span><span class="detail-value" style="color:#64b4ff;font-weight:600;">' + Math.round(p.moistureVal) + '%</span></div>' : '') +
+            (p.hasTemperature ? '<div class="detail-row"><span class="detail-label">Temperature</span><span class="detail-value" style="color:#ff9f43;font-weight:600;">' + Math.round(p.temperatureVal) + self._esc(p.temperatureUnit) + '</span></div>' : '') +
+            (p.hasHumidity    ? '<div class="detail-row"><span class="detail-label">Humidity</span><span class="detail-value" style="color:#54a0ff;font-weight:600;">' + Math.round(p.humidityVal) + self._esc(p.humidityUnit) + '</span></div>' : '') +
             (p.nextFertilized ? '<div class="detail-row"><span class="detail-label">Next fertilization</span><span class="detail-value">' + self._esc(p.nextFertilized) + '</span></div>' : '') +
             repottedRows +
             (p.healthEntityId ? '<div class="detail-row"><span class="detail-label">Health</span>' +
