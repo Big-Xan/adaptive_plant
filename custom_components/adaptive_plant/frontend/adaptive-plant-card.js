@@ -1,4 +1,4 @@
-// Adaptive Plant Card v19.2
+// Adaptive Plant Card v19.3
 
 class AdaptivePlantCard extends HTMLElement {
   constructor() {
@@ -519,7 +519,11 @@ class AdaptivePlantCard extends HTMLElement {
         notes:                (st('_notes') && st('_notes').state) ? st('_notes').state : '',
         notesEntityId:        find('_notes'),
         btnWater:             find('_mark_watered'),
-        btnSnooze:            find('_snooze_today_s_tasks'),
+        // Match by domain + keyword rather than an exact suffix: the snooze button's
+        // entity-id slug varies by when the plant was created (_snooze_watering,
+        // _snooze_today_s_tasks, and the collision artifact _snooze_today_s_tasks_watering).
+        // Domain-scoped so it can't grab the snooze COUNT sensor (a sensor., not a button.).
+        btnSnooze:            devIds.find(function(id){ return id.indexOf('button.') === 0 && id.indexOf('snooze') !== -1; }),
         btnFert:              find('_mark_fertilized'),
         btnConfirmHealth:     find('_confirm_health'),
         btnRepotted:          find('_mark_repotted'),
