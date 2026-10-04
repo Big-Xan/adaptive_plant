@@ -156,6 +156,58 @@
   "options": {
     "step": {
       "init": {
+        "title": "Configure Plant",
+        "menu_options": {
+          "settings": "Plant settings",
+          "linked_sensors": "Linked sensors"
+        }
+      },
+      "linked_sensors": {
+        "title": "Linked Sensors",
+        "description": "Extra sensors shown on this plant's card. Add one here; remove them all with the Linked sensors toggle on Plant settings.",
+        "menu_options": {
+          "add_sensor": "Add a sensor",
+          "manage_sensors": "Manage linked sensors",
+          "done_linked": "Done"
+        }
+      },
+      "add_sensor": {
+        "title": "Link a sensor",
+        "description": "Linked sensors show on the companion card overview tab.",
+        "data": {
+          "entity_id": "Sensor",
+          "icon": "Icon (optional)",
+          "color": "Color (optional)",
+          "position": "Position",
+          "order": "Order"
+        },
+        "data_description": {
+          "entity_id": "The sensor whose reading to display (e.g. temperature, humidity, lux, soil fertility).",
+          "icon": "Pick an icon, or type any MDI name (e.g. mdi:thermometer) or emoji. Defaults to the sensor's icon.",
+          "color": "Hex color for the icon and value, e.g. #64b4ff. Defaults to the card's text color.",
+          "position": "Whether this sensor's chip sits before ('above') or after ('below') the watering / fertilization chips in the card's overview row.",
+          "order": "Sort order within the chosen position (lower numbers appear first)."
+        }
+      },
+      "edit_sensor": {
+        "title": "Edit linked sensor",
+        "description": "Editing {sensor}. Change how it looks, reorder it, or remove it.",
+        "data": {
+          "icon": "Icon",
+          "color": "Color",
+          "position": "Position",
+          "order": "Order",
+          "remove_sensor": "Remove this sensor"
+        },
+        "data_description": {
+          "icon": "Pick an icon, or type any MDI name or emoji. Leave blank to use the sensor's own icon.",
+          "color": "Hex color for the icon, e.g. #64b4ff. Leave blank for the card's default.",
+          "position": "Whether this sensor's chip sits before ('above') or after ('below') the watering / fertilization chips.",
+          "order": "Set to a number to reorder — it drops in at that spot and pushes the rest back.",
+          "remove_sensor": "Turn on and submit to delete this linked sensor."
+        }
+      },
+      "settings": {
         "title": "Update Plant Settings",
         "data": {
           "label": "Location label (optional)",
@@ -175,6 +227,7 @@
           "enable_image": "Enable image",
           "fertilization_enabled": "Enable fertilization tracking",
           "repotting_enabled": "Enable repotting tracking",
+          "enable_custom_sensors": "Linked sensors",
           "moisture_sensor_enabled": "Enable moisture sensor",
           "moisture_sensor": "Moisture sensor",
           "dry_threshold": "Dry threshold (reschedule watering to today)",
@@ -185,6 +238,7 @@
           "notes_enabled": "Toggle to enable or disable the notes field for this plant.",
           "fertilization_enabled": "Toggle to enable or disable fertilization tracking. Previous dates are preserved when re-enabled.",
           "repotting_enabled": "Toggle to enable or disable repotting tracking. Previous dates are preserved when re-enabled.",
+          "enable_custom_sensors": "Add extra sensors (temperature, humidity, lux, and so on) to show on this plant's card. Turn on to link your first sensor; turn off to remove all linked sensors.",
           "enable_care_instructions": "Toggle to enable or disable care instructions for this plant. After enabling, save and reopen Configure to add your notes. Your text is preserved when re-enabled.",
           "care_instructions": "Free-form care notes shown read-only on the card. Type \\*\\*bold\\*\\* to make text **bold**. Line breaks are supported.",
           "moisture_sensor_enabled": "Toggle off to remove the moisture sensor and clear all thresholds.",
