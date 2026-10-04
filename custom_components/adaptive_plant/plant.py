@@ -498,7 +498,7 @@ class PlantData:
                 nw_date = date.fromisoformat(nw)
                 if nw_date <= today:
                     watering_due = True
-                    updates[STATE_NEXT_WATERING] = (nw_date + timedelta(days=1)).isoformat()
+                    updates[STATE_NEXT_WATERING] = (today + timedelta(days=1)).isoformat()
                     _LOGGER.debug(
                         "%s: watering due — snoozing to %s",
                         self.plant_name, updates[STATE_NEXT_WATERING],
@@ -518,7 +518,7 @@ class PlantData:
                 try:
                     nf_date = date.fromisoformat(nf)
                     if nf_date <= today:
-                        updates[STATE_NEXT_FERTILIZED] = (nf_date + timedelta(days=1)).isoformat()
+                        updates[STATE_NEXT_FERTILIZED] = (today + timedelta(days=1)).isoformat()
                         _LOGGER.debug(
                             "%s: fertilization due — snoozing to %s",
                             self.plant_name, updates[STATE_NEXT_FERTILIZED],
@@ -757,7 +757,7 @@ class PlantData:
         wet = self.wet_threshold
         today = date.today()
 
-        if dry is not None and moisture < dry:
+        if dry is not None and moisture <= dry:
             nw = self.next_watering
             if nw:
                 try:
