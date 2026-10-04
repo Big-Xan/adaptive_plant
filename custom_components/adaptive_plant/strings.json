@@ -164,12 +164,16 @@
       },
       "linked_sensors": {
         "title": "Linked Sensors",
-        "description": "Extra sensors shown on this plant's card. Add one here; remove them all with the Linked sensors toggle on Plant settings.",
+        "description": "Extra sensors shown on this plant's card ({count} of {max} linked). To remove them all at once, turn off the Linked sensors toggle in Plant settings.",
         "menu_options": {
           "add_sensor": "Add a sensor",
           "manage_sensors": "Manage linked sensors",
           "done_linked": "Done"
         }
+      },
+      "manage_sensors": {
+        "title": "Manage linked sensors",
+        "description": "Choose a sensor to edit, reorder or remove it. Changes are saved when you press Done."
       },
       "add_sensor": {
         "title": "Link a sensor",
@@ -184,7 +188,7 @@
         "data_description": {
           "entity_id": "The sensor whose reading to display (e.g. temperature, humidity, lux, soil fertility).",
           "icon": "Pick an icon, or type any MDI name (e.g. mdi:thermometer) or emoji. Defaults to the sensor's icon.",
-          "color": "Hex color for the icon and value, e.g. #64b4ff. Defaults to the card's text color.",
+          "color": "Hex color for the icon, e.g. #64b4ff. Leave blank for the card's default.",
           "position": "Whether this sensor's chip sits before ('above') or after ('below') the watering / fertilization chips in the card's overview row.",
           "order": "Sort order within the chosen position (lower numbers appear first)."
         }
