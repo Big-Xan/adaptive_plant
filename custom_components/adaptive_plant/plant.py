@@ -16,6 +16,7 @@ from homeassistant.core import HomeAssistant
 from .const import (
     CONF_AREA,
     CONF_CARE_INSTRUCTIONS,
+    CONF_CUSTOM_SENSORS,
     CONF_DRY_THRESHOLD,
     CONF_EARLY_WATERING_THRESHOLD,
     CONF_ENABLE_CARE_INSTRUCTIONS,
@@ -178,6 +179,16 @@ class PlantData:
         # formatting survives; treat all-whitespace as "no value".
         val = self._entry.options.get(CONF_CARE_INSTRUCTIONS)
         return val if (val and val.strip()) else None
+
+    @property
+    def custom_sensors(self) -> list[dict]:
+        # Per-plant list of linked display-only sensors, each a dict with keys
+        # entity_id / label / icon / color / position / order. Managed only in
+        # the options flow, so the value lives solely in options — no entry.data
+        # fallback (same rationale as care_instructions). The isinstance guard
+        # returns [] for an unset key or any malformed/cleared value.
+        val = self._entry.options.get(CONF_CUSTOM_SENSORS)
+        return val if isinstance(val, list) else []
 
     @property
     def enable_image(self) -> bool:
