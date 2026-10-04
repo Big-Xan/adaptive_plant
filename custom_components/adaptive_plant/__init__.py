@@ -190,6 +190,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _moisture_unsub()
             _moisture_unsub = None
 
+        # Seed (or reset) the auto-mark baseline before subscribing, so the
+        # first state change is compared against a real reading.
+        plant.seed_moisture_baseline()
+
         sensor_id: str | None = plant.moisture_sensor
         if not sensor_id:
             return
