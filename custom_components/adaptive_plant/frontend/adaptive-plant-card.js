@@ -1,4 +1,4 @@
-// Adaptive Plant Card v19.3
+// Adaptive Plant Card v19.7
 
 class AdaptivePlantCard extends HTMLElement {
   constructor() {
@@ -75,6 +75,15 @@ class AdaptivePlantCard extends HTMLElement {
     if (_imgSize > 100)  _imgSize = 100;
     this._imageSize  = _imgSize;
     this._imageShape = config.image_shape === 'square' ? 'square' : 'circle';
+
+    // v19.7 options — Today tab.
+    // show_hold_button: hide the "Hold to Mark All Tasks Completed" bar
+    // entirely (default shown). The bar is also suppressed automatically
+    // whenever nothing on Today is actionable.
+    // show_completed_today: list plants whose tasks are all done for the day
+    // under a "Completed Today:" section, with display-only checks (default off).
+    this._showHoldButton     = config.show_hold_button     !== false;
+    this._showCompletedToday = config.show_completed_today === true;
 
     var ic = config.icons || {};
     this._icons = {
@@ -288,6 +297,39 @@ class AdaptivePlantCard extends HTMLElement {
     return '<span class="emoji-icon">' + value + '</span>';
   }
 
+  // ── Linked display-sensor rows for the Overview expanded detail ───────────
+  // ── Linked-sensor rows for the Overview expanded detail (after health/repot) ──
+  _customSensorRows(p) {
+    var self = this;
+    var list = (p.customSensors || []).slice();
+    if (!list.length) return '';
+    list.sort(function(a, b) { return a.order - b.order; });
+    return list.map(function(cs) {
+      var color    = cs.color || 'var(--primary-text-color,#ddd)';
+      var iconHtml = cs.icon ? self._renderIcon(cs.icon, color, '16px') + ' ' : '';
+      var valTxt   = self._esc(String(cs.value)) + (cs.unit ? ' ' + self._esc(cs.unit) : '');
+      return '<div class="detail-row custom-sensor-row">' +
+        '<span class="detail-label">' + iconHtml + self._esc(cs.name) + '</span>' +
+        '<span class="detail-value">' + valTxt + '</span>' +
+        '</div>';
+    }).join('');
+  }
+
+  // ── Linked-sensor chips for the Overview meta row. position controls whether
+  //    a chip sits before ('above') or after ('below') the water/fert chips. ──
+  _customSensorChips(p, band) {
+    var self = this;
+    var list = (p.customSensors || []).filter(function(cs) { return cs.position === band; });
+    if (!list.length) return '';
+    list.sort(function(a, b) { return a.order - b.order; });
+    return list.map(function(cs) {
+      var color    = cs.color || 'var(--secondary-text-color,#888)';
+      var iconHtml = cs.icon ? self._renderIcon(cs.icon, color, '12px') + ' ' : '';
+      var valTxt   = self._esc(String(cs.value)) + (cs.unit ? ' ' + self._esc(cs.unit) : '');
+      return '<span class="meta-item">' + iconHtml + valTxt + '</span>';
+    }).join('');
+  }
+
   // ── Latin / scientific name line rendered below the plant name ────────────
   _latinNameHtml(p) {
     if (!this._showLatinName || !p.latinName) return '';
@@ -368,24 +410,33 @@ class AdaptivePlantCard extends HTMLElement {
     var footerEl  = this.shadowRoot.getElementById('footer');
     if (!contentEl) return;
 
+    var self   = this;
     var plants = this._plants();
     var html = '';
     if      (this._tab === 'today')    html = this._renderToday(plants);
     else if (this._tab === 'upcoming') html = this._renderUpcoming(plants);
     else                               html = this._renderOverview(plants);
-    contentEl.innerHTML = html;
 
     if (this._tab === 'today') {
-      var holdHtml = this._renderHoldBar();
+      // Show the hold bar only when it would actually press something —
+      // same predicate the hold completion uses in _attachHold.
+      var actionable = plants.some(function(p) {
+        return (self._isUrgent(p.daysWater) && p.btnWater) || (self._isUrgent(p.daysFert) && p.btnFert);
+      });
+      var holdHtml      = (this._showHoldButton && actionable) ? this._renderHoldBar() : '';
+      var hasActive     = plants.some(function(p) { return self._isUrgent(p.daysWater) || self._isUrgent(p.daysFert); });
+      var completedHtml = this._renderCompletedToday(plants, hasActive);
       if (this._pinHoldButton && footerEl) {
         footerEl.innerHTML     = holdHtml;
-        footerEl.style.display = '';
+        footerEl.style.display = holdHtml ? '' : 'none';
+        contentEl.innerHTML    = html + completedHtml;
       } else {
         if (footerEl) { footerEl.innerHTML = ''; footerEl.style.display = 'none'; }
-        contentEl.innerHTML += holdHtml;
+        contentEl.innerHTML = html + holdHtml + completedHtml;
       }
     } else {
       if (footerEl) { footerEl.innerHTML = ''; footerEl.style.display = 'none'; }
+      contentEl.innerHTML = html;
     }
 
     this._attachContentListeners(plants, contentEl);
@@ -484,6 +535,12 @@ class AdaptivePlantCard extends HTMLElement {
       var matchEnd = function(id, s) { return id.endsWith(s) || id.replace(/_\d+$/, '').endsWith(s); };
       var find = function(s) { return devIds.find(function(id) { return matchEnd(id, s); }); };
       var st   = function(s) { var fid = find(s); return fid ? hass.states[fid] : null; };
+      // Date-sensor state as 'YYYY-MM-DD', or null. Sensor-domain scoped.
+      var sDate = function(s) {
+        var fid = devIds.find(function(id) { return id.indexOf('sensor.') === 0 && matchEnd(id, s); });
+        var sst = fid ? hass.states[fid] : null;
+        return (sst && /^\d{4}-\d{2}-\d{2}$/.test(sst.state)) ? sst.state : null;
+      };
       var nwSt   = st('_next_watering');
       var nwAt   = nwSt && nwSt.attributes ? nwSt.attributes : {};
       var hlthId = devIds.find(function(id) { return id.startsWith('select.') && matchEnd(id, '_health'); });
@@ -502,6 +559,24 @@ class AdaptivePlantCard extends HTMLElement {
       var latinSt   = st('_latin_name');
       var latinName = (latinSt && latinSt.state && latinSt.state !== 'unknown' && latinSt.state !== 'unavailable')
         ? latinSt.state : null;
+
+      // Linked display sensors — resolve each to a display-ready object from
+      // hass.states (the source can be ANY entity, not a plant entity), so the
+      // render stays free of hass lookups. Missing/unavailable -> em dash.
+      var customResolved = (nwAt.custom_sensors || []).map(function(cs) {
+        var srcSt = hass.states[cs.entity_id];
+        var avail = srcSt && srcSt.state !== undefined && srcSt.state !== 'unavailable' && srcSt.state !== 'unknown';
+        var srcAt = (srcSt && srcSt.attributes) ? srcSt.attributes : {};
+        return {
+          name:     srcAt.friendly_name || cs.entity_id,
+          value:    avail ? srcSt.state : '\u2014',
+          unit:     (avail && srcAt.unit_of_measurement) ? srcAt.unit_of_measurement : '',
+          icon:     cs.icon || srcAt.icon || '',
+          color:    cs.color || '',
+          position: cs.position === 'above' ? 'above' : 'below',
+          order:    (typeof cs.order === 'number') ? cs.order : 999,
+        };
+      });
 
       return {
         id:                   devId,
@@ -527,6 +602,8 @@ class AdaptivePlantCard extends HTMLElement {
         btnFert:              find('_mark_fertilized'),
         btnConfirmHealth:     find('_confirm_health'),
         btnRepotted:          find('_mark_repotted'),
+        lastWatered:          sDate('_last_watered'),
+        lastFertilized:       sDate('_last_fertilized'),
         lastRepotted:         st('_last_repotted')         ? st('_last_repotted').state         : null,
         repottedDateInputId:  find('_repotted_on'),
         repottedDateInput:    (st('_repotted_on') && st('_repotted_on').state && st('_repotted_on').state !== 'unknown') ? st('_repotted_on').state : '',
@@ -534,6 +611,7 @@ class AdaptivePlantCard extends HTMLElement {
         hasMoisture:          moistureVal !== null,
         latinName:            latinName,     // string or null
         careInstructions:     nwAt.care_instructions || null,
+        customSensors:        customResolved,
       };
     }).sort(function(a, b) { return a.name.localeCompare(b.name); });
   }
@@ -621,7 +699,12 @@ class AdaptivePlantCard extends HTMLElement {
     var summary = parts.length
       ? '<div class="summary-bar"><div class="summary-left"><span class="summary-icon">✓</span><span>Today\'s tasks: <strong>' + parts.join(' and ') + '</strong></span></div></div>'
       : '';
-    if (!dueSet.length) return summary + '<div class="empty"><span class="empty-icon">🌿</span><p>All caught up!</p></div>';
+    if (!dueSet.length) {
+      if (this._completedToday(plants).length) {
+        return '<div class="summary-bar"><div class="summary-left"><span class="summary-icon">✓</span><span>All caught up!</span></div></div>';
+      }
+      return summary + '<div class="empty"><span class="empty-icon">🌿</span><p>All caught up!</p></div>';
+    }
 
     var byArea = this._groupByArea(dueSet);
     var rows = Object.keys(byArea).map(function(area) {
@@ -651,6 +734,78 @@ class AdaptivePlantCard extends HTMLElement {
       return '<div class="area-group"><div class="area-header">' + self._esc(area) + '</div>' + inner + '</div>';
     }).join('');
     return summary + rows;
+  }
+
+  // ── Today's date in the HA server's time zone (matches the integration's
+  //    date.today()); falls back to the browser's local date. ───────────────
+  _todayIso() {
+    var tz = this._hass && this._hass.config && this._hass.config.time_zone;
+    try {
+      if (tz) return new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    } catch (e) { /* fall through */ }
+    var d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+
+  // ── Completed Today section (display-only) ─────────────────────────────────
+  // A plant is listed once nothing is left for it today (no urgent water/fert)
+  // and it was watered and/or fertilized today — from any tab, or by a
+  // moisture-sensor auto-mark. Checks are bare icons (no circle, no handler)
+  // so they read as status, not as the interactive buttons above.
+  _completedToday(plants) {
+    if (!this._showCompletedToday) return [];
+    var self  = this;
+    var today = this._todayIso();
+    return plants.filter(function(p) {
+      if (self._isUrgent(p.daysWater) || self._isUrgent(p.daysFert)) return false;
+      return p.lastWatered === today || p.lastFertilized === today;
+    });
+  }
+
+  // hasActive: active task rows render above this section. The divider only
+  // separates Completed from active tasks — with nothing active it's omitted.
+  _renderCompletedToday(plants, hasActive) {
+    var self  = this;
+    var today = this._todayIso();
+    var done  = this._completedToday(plants);
+    if (!done.length) return '';
+    var byArea = this._groupByArea(done);
+    var rows = Object.keys(byArea).map(function(area) {
+      var byLabel = self._splitByLabel(byArea[area]);
+      var inner   = self._labelEntries(byLabel).map(function(e) {
+        var lk  = e[0]; var lps = e[1];
+        var hdr = lk ? '<div class="label-sub-header">' + self._esc(lk) + '</div>' : '';
+        return hdr + lps.map(function(p) {
+          var fertMark  = p.lastFertilized === today
+            ? '<span class="done-mark" title="Fertilized today">' + self._renderIcon(self._icons.fertilize_done, self._icons.fertilize_done_color, '18px') + '</span>' : '';
+          var waterMark = p.lastWatered === today
+            ? '<span class="done-mark" title="Watered today">'    + self._renderIcon(self._icons.water_done,     self._icons.water_done_color,     '18px') + '</span>' : '';
+          return '<div class="plant-row">' +
+            self._avatar(p, 'today') +
+            '<div class="plant-info">' +
+              '<div class="plant-name">' + self._esc(p.name) + '</div>' +
+              self._latinNameHtml(p) +
+              (self._showText('today') && p.health ? '<div class="plant-meta"><span class="health-badge" style="color:' + self._healthColor(p.health) + '">' + self._capitalise(p.health) + '</span></div>' : '') +
+            '</div>' +
+            '<div class="row-actions">' + fertMark + waterMark + '</div>' +
+          '</div>';
+        }).join('');
+      }).join('');
+      return '<div class="area-subgroup"><div class="area-sub-header">' + self._esc(area) + '</div>' + inner + '</div>';
+    }).join('');
+    return '<div class="completed-section' + (hasActive ? ' completed-divided' : '') + '"><div class="completed-header">Completed Today:</div>' + rows + '</div>';
+  }
+
+  // ── Overview: per-task red icons beside the plant name. Same conditions as
+  //    the former generic dot: water/fert due today or overdue, health
+  //    check-in overdue. Colored with overdue_color. ─────────────────────────
+  _urgentIcons(p) {
+    var oc  = this._overdueColor;
+    var out = '';
+    if (this._isUrgent(p.daysWater))  out += '<span class="urgent-icon" title="Watering due">'          + this._renderIcon(this._icons.water,          oc, '14px') + '</span>';
+    if (this._isUrgent(p.daysFert))   out += '<span class="urgent-icon" title="Fertilization due">'     + this._renderIcon(this._icons.fertilize,      oc, '14px') + '</span>';
+    if (p.healthCheckInOverdue)       out += '<span class="urgent-icon" title="Health check-in due">'   + this._renderIcon(this._icons.health_confirm, oc, '14px') + '</span>';
+    return out ? '<span class="urgent-icons">' + out + '</span>' : '';
   }
 
   _renderHoldBar() {
@@ -759,7 +914,6 @@ class AdaptivePlantCard extends HTMLElement {
         var hdr = lk ? '<div class="label-sub-header">' + self._esc(lk) + '</div>' : '';
         var rows = lps.map(function(p) {
           var isExp   = self._expanded === p.id;
-          var urgent  = self._isUrgent(p.daysWater) || self._isUrgent(p.daysFert) || p.healthCheckInOverdue;
           var showTxt = self._showText('overview');
 
           // v13: in the meta row, show moisture % instead of watering days
@@ -776,12 +930,14 @@ class AdaptivePlantCard extends HTMLElement {
           var row = '<div class="plant-row plant-row-click" data-expand="' + p.id + '">' +
             self._avatar(p, 'overview') +
             '<div class="plant-info">' +
-              '<div class="plant-name">' + self._esc(p.name) + (urgent ? '<span class="urgent-dot"></span>' : '') + '</div>' +
+              '<div class="plant-name">' + self._esc(p.name) + self._urgentIcons(p) + '</div>' +
               self._latinNameHtml(p) +
               '<div class="plant-meta">' +
                 (showTxt && p.health ? '<span class="health-badge" style="color:' + self._healthColor(p.health) + '">' + self._capitalise(p.health) + '</span>' : '') +
+                self._customSensorChips(p, 'above') +
                 waterMeta +
                 (p.daysFert ? '<span class="meta-item">' + self._renderIcon(self._icons.fertilize, self._icons.fertilize_color, '12px') + ' ' + p.daysFert + '</span>' : '') +
+                self._customSensorChips(p, 'below') +
               '</div>' +
             '</div>' +
             '<div class="chevron">' + (isExp ? '▲' : '▼') + '</div>' +
@@ -839,6 +995,7 @@ class AdaptivePlantCard extends HTMLElement {
               '<select class="health-select" data-health-entity="' + p.healthEntityId + '">' +
                 hopts.map(function(o) { return '<option value="' + o + '"' + (o === p.health ? ' selected' : '') + '>' + self._capitalise(o) + '</option>'; }).join('') +
               '</select></div>' : '') +
+            self._customSensorRows(p) +
             notesHtml +
             careHtml +
             '<div class="detail-actions">' +
@@ -962,7 +1119,10 @@ class AdaptivePlantCard extends HTMLElement {
       '.plant-meta{display:flex;gap:8px;margin-top:3px;flex-wrap:wrap;align-items:center;}',
       '.meta-item{font-size:12px;color:var(--secondary-text-color,#888);display:flex;align-items:center;gap:3px;}.health-badge{font-size:12px;font-weight:600;}',
       '.moisture-pill{color:#64b4ff;}',
-      '.urgent-dot{width:7px;height:7px;border-radius:50%;background:' + oc + ';display:inline-block;flex-shrink:0;}',
+      '.urgent-icons{display:inline-flex;align-items:center;gap:3px;flex-shrink:0;}.urgent-icon{display:inline-flex;align-items:center;line-height:1;}',
+      '.completed-section.completed-divided{margin-top:8px;padding-top:4px;border-top:1px solid rgba(255,255,255,0.06);}',
+      '.completed-header{padding:10px 16px 2px;text-align:center;font-size:13px;font-weight:600;color:var(--secondary-text-color,#888);}',
+      '.done-mark{width:34px;height:34px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}',
       '.chevron{font-size:10px;color:var(--secondary-text-color,#666);flex-shrink:0;}',
       '.chips{display:flex;gap:5px;margin-top:4px;flex-wrap:wrap;min-width:0;}',
       '.chip{font-size:12px;padding:2px 8px;border-radius:20px;font-weight:500;white-space:nowrap;display:inline-flex;align-items:center;gap:3px;flex:1 1 0;min-width:110px;}',
@@ -974,6 +1134,7 @@ class AdaptivePlantCard extends HTMLElement {
       '.btn-fert{background:rgba(124,185,126,0.15);color:#7cb97e;}.btn-fert:hover{background:rgba(124,185,126,0.3);}',
       '.plant-detail{padding:4px 16px 12px ' + detailPad + 'px;border-bottom:1px solid rgba(255,255,255,0.06);}',
       '.detail-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;font-size:13px;}',
+      '.custom-sensor-row .detail-label{display:inline-flex;align-items:center;}',
       '.detail-label{color:var(--secondary-text-color,#888);flex-shrink:0;margin-right:12px;}.detail-value{font-weight:500;}',
       '.health-select{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:var(--primary-text-color,#e5e5e5);font-size:13px;padding:4px 8px;cursor:pointer;outline:none;}',
       '.notes-section{margin:6px 0;}.notes-display{display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;font-size:13px;}',
@@ -1084,6 +1245,12 @@ class AdaptivePlantCardEditor extends HTMLElement {
         this._toggle('Upcoming', 'show_upcoming', this._get('show_upcoming', true))  +
         this._toggle('Overview', 'show_overview', this._get('show_overview', true))  +
       '</div></div>' +
+      '<div class="field-group"><div class="field-label">Today tab</div><div class="toggle-row">' +
+        this._toggle('Show "Hold to Mark All Tasks Completed" button', 'show_hold_button',     this._get('show_hold_button',     true))  +
+        this._toggle('Show completed tasks',                          'show_completed_today', this._get('show_completed_today', false)) +
+      '</div>' +
+        '<div class="field-hint">The hold button only appears when there is something to complete. Completed tasks are listed under a <em>Completed Today</em> section below your active tasks, with display-only checks.</div>' +
+      '</div>' +
       '<div class="field-group"><div class="field-label">Card appearance</div><div class="toggle-row">' +
         this._toggle('Show card background',      'show_background',  this._get('show_background',  true))  +
         this._toggle('Pin hold button to bottom', 'pin_hold_button',  this._get('pin_hold_button',  false)) +
