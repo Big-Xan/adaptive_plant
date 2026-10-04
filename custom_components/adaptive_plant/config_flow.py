@@ -1344,7 +1344,14 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
         if count < MAX_CUSTOM_SENSORS:
             options.append("add_sensor")
         options += ["manage_sensors", "done_linked"]
-        return self.async_show_menu(step_id="linked_sensors", menu_options=options)
+        return self.async_show_menu(
+            step_id="linked_sensors",
+            menu_options=options,
+            description_placeholders={
+                "count": str(count),
+                "max": str(MAX_CUSTOM_SENSORS),
+            },
+        )
 
     async def async_step_done_linked(self, user_input: dict | None = None) -> FlowResult:
         """Exit the linked-sensors manager, persisting via the standard chokepoint."""
