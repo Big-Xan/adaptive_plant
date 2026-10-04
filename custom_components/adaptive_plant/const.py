@@ -39,6 +39,23 @@ CONF_ENABLE_LATIN_NAME = "enable_latin_name"
 CONF_LATIN_NAME = "latin_name"
 CONF_ENABLE_CARE_INSTRUCTIONS = "enable_care_instructions"
 CONF_CARE_INSTRUCTIONS = "care_instructions"
+# Per-plant ordered list of linked display-only sensors rendered as styled
+# rows on the companion card. Stored in options as a list of dicts (keys:
+# entity_id, label, icon, color, position, order). See PlantData.custom_sensors.
+CONF_CUSTOM_SENSORS = "custom_sensors"
+# Item dict keys within a custom_sensors entry (also the add-sensor options-
+# flow field names). CONF_ENABLE_CUSTOM_SENSORS is the transient master toggle
+# on the settings form — never persisted; its state derives from whether the
+# list is non-empty.
+CONF_ENABLE_CUSTOM_SENSORS = "enable_custom_sensors"
+CUSTOM_SENSOR_ENTITY_ID = "entity_id"
+CUSTOM_SENSOR_LABEL = "label"
+CUSTOM_SENSOR_ICON = "icon"
+CUSTOM_SENSOR_COLOR = "color"
+CUSTOM_SENSOR_POSITION = "position"
+CUSTOM_SENSOR_ORDER = "order"
+POSITION_ABOVE = "above"
+POSITION_BELOW = "below"
 CONF_NOTES_ENABLED = "notes_enabled"
 CONF_ENABLE_REPOTTING = "enable_repotting"
 
