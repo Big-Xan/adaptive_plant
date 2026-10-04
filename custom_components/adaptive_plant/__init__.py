@@ -154,8 +154,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # re-applying entry.data's snapshot on every load reverts area changes
     # made on the device page.
     dev_reg = dr.async_get(hass)
-    device_preexisting = (
-        dev_reg.async_get_device(identifiers={(DOMAIN, entry.entry_id)}) is not None
+    device_preexisting = bool(
+        dr.async_entries_for_config_entry(dev_reg, entry.entry_id)
     )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -169,9 +169,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # ── Assign device to area on first creation only ─────────────────────────
     area_id: str | None = entry.data.get(CONF_AREA)
     if area_id and not device_preexisting:
-        device = dev_reg.async_get_device(identifiers={(DOMAIN, entry.entry_id)})
-        if device:
-            dev_reg.async_update_device(device.id, area_id=area_id)
+        devices = dr.async_entries_for_config_entry(dev_reg, entry.entry_id)
+        if devices:
+            dev_reg.async_update_device(devices[0].id, area_id=area_id)
 
     # ── Daily rollover at 00:05 ──────────────────────────────────────────────
     async def _daily_rollover(now):
