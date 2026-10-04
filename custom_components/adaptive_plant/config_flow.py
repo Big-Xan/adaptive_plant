@@ -18,9 +18,18 @@ from homeassistant.helpers import selector
 from .const import (
     CONF_AREA,
     CONF_CARE_INSTRUCTIONS,
+    CONF_CUSTOM_SENSORS,
+    CUSTOM_SENSOR_COLOR,
+    CUSTOM_SENSOR_ENTITY_ID,
+    CUSTOM_SENSOR_ICON,
+    CUSTOM_SENSOR_ORDER,
+    CUSTOM_SENSOR_POSITION,
+    POSITION_ABOVE,
+    POSITION_BELOW,
     CONF_DRY_THRESHOLD,
     CONF_EARLY_WATERING_THRESHOLD,
     CONF_ENABLE_CARE_INSTRUCTIONS,
+    CONF_ENABLE_CUSTOM_SENSORS,
     CONF_ENABLE_FERTILIZATION,
     CONF_ENABLE_IMAGE,
     CONF_ENABLE_LATIN_NAME,
@@ -62,6 +71,11 @@ from .const import (
 from .plant import next_due, PlantData
 
 _LOGGER = logging.getLogger(__name__)
+
+# Linked-sensor manager: hard cap on linked sensors per plant, and the
+# transient remove-toggle field key on the edit form (never persisted).
+MAX_CUSTOM_SENSORS = 10
+CONF_REMOVE_SENSOR = "remove_sensor"
 
 WATERING_DATE_TODAY = "today"
 WATERING_DATE_YESTERDAY = "yesterday"
@@ -678,11 +692,31 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
         self._pending_latin_first: bool = False
         self._pending_fert_first: bool = False
         self._pending_repot_first: bool = False
+        self._pending_custom_first: bool = False
+        # Linked-sensor manager working copy (deep-copied from options on
+        # entry, committed on Done) and the index of the sensor being edited.
+        self._working_sensors: list[dict] | None = None
+        self._editing_idx: int = 0
         # True when the user submitted a blank or "null" label in step 1 —
         # carried so the moisture-options step can remove the stored label.
         self._pending_clear_label: bool = False
 
     async def async_step_init(self, user_input: dict | None = None) -> FlowResult:
+        """Options entry point.
+
+        With no linked sensors, delegate straight to the settings form — no menu,
+        no extra click. Once the plant has one or more linked sensors, front a
+        menu so the settings form and the linked-sensors manager are separate.
+        """
+        cs = self._config_entry.options.get(CONF_CUSTOM_SENSORS)
+        if isinstance(cs, list) and cs:
+            return self.async_show_menu(
+                step_id="init",
+                menu_options=["settings", "linked_sensors"],
+            )
+        return await self.async_step_settings(user_input)
+
+    async def async_step_settings(self, user_input: dict | None = None) -> FlowResult:
         errors: dict[str, str] = {}
         entry = self._config_entry
         current_opts = entry.options
@@ -703,6 +737,20 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
 
             cleaned = {k: v for k, v in user_input.items() if v not in (None, "")}
             cleaned.pop(CONF_IMAGE_UPLOAD, None)
+
+            # Linked-sensors master toggle (transient — popped so it never
+            # persists; its state derives from whether custom_sensors is non-
+            # empty). ON with none configured -> first-enable add step; OFF with
+            # some present -> wipe the whole list; otherwise a no-op. Handled
+            # here, before the moisture/no-moisture split, so both branches
+            # inherit the flag/removal via _route_first_enable and _save.
+            cleaned.pop(CONF_ENABLE_CUSTOM_SENSORS, None)
+            _cs_stored = current_opts.get(CONF_CUSTOM_SENSORS)
+            _has_custom = isinstance(_cs_stored, list) and bool(_cs_stored)
+            _custom_on = bool(user_input.get(CONF_ENABLE_CUSTOM_SENSORS, False))
+            self._pending_custom_first = _custom_on and not _has_custom
+            if _has_custom and not _custom_on:
+                self._flow_removed_keys.add(CONF_CUSTOM_SENSORS)
 
             # Normalise label: drop from `cleaned` unconditionally, then re-add
             # the stripped value only if the user didn't intend to clear it.
@@ -812,8 +860,8 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
 
             if errors:
                 return self.async_show_form(
-                    step_id="init",
-                    data_schema=vol.Schema(self._init_schema_fields()),
+                    step_id="settings",
+                    data_schema=vol.Schema(self._settings_schema_fields()),
                     errors=errors,
                 )
 
@@ -879,7 +927,7 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
                 # otherwise pull the stale value back in from current_opts.
                 self._pending_clear_label = clear_label
                 # Dry/wet thresholds are shown inline on the main form whenever a
-                # sensor is already active (see _init_schema_fields), so they can be
+                # sensor is already active (see _settings_schema_fields), so they can be
                 # edited on demand and saved in one step. They are absent only on a
                 # first-time enable — the form was built with the sensor off, so the
                 # fields couldn't be shown — in which case we collect them once in the
@@ -889,8 +937,8 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
                 if inline_dry is not None and inline_wet is not None:
                     if inline_dry >= inline_wet:
                         return self.async_show_form(
-                            step_id="init",
-                            data_schema=vol.Schema(self._init_schema_fields()),
+                            step_id="settings",
+                            data_schema=vol.Schema(self._settings_schema_fields()),
                             errors={"base": "dry_above_wet"},
                         )
                     return await self.async_step_moisture_options(
@@ -998,13 +1046,13 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
                 return await self._route_first_enable()
 
         return self.async_show_form(
-            step_id="init",
-            data_schema=vol.Schema(self._init_schema_fields()),
+            step_id="settings",
+            data_schema=vol.Schema(self._settings_schema_fields()),
             errors=errors,
         )
 
-    def _init_schema_fields(self) -> dict:
-        """Build the field dict for the `init` step schema (also used to re-show on error)."""
+    def _settings_schema_fields(self) -> dict:
+        """Build the field dict for the `settings` step schema (also used to re-show on error)."""
         entry = self._config_entry
         current_opts = entry.options
         defaults = {**entry.data, **current_opts}
@@ -1092,6 +1140,15 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
                     description={"suggested_value": current_latin},
                 )
             ] = selector.selector({"text": {}})
+
+        # Linked-sensors master toggle — placed between latin name and care
+        # instructions. Default reflects whether any linked sensors exist;
+        # on-with-none routes to the add step, off-with-some wipes them.
+        _cs_active = current_opts.get(CONF_CUSTOM_SENSORS)
+        schema_fields[vol.Required(
+            CONF_ENABLE_CUSTOM_SENSORS,
+            default=isinstance(_cs_active, list) and bool(_cs_active),
+        )] = selector.selector({"boolean": {}})
 
         # Care instructions toggle — always shown so users can enable it after
         # setup. If enabled, show a multiline text box (markdown-ish: **bold**).
@@ -1187,9 +1244,9 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
                 if self._pending_clear_label:
                     self._pending_opts[CONF_LABEL] = ""
 
-                # ── First-enable detection (same as in async_step_init) ───────
+                # ── First-enable detection (same as in async_step_settings) ───────
                 # Must run here too — when moisture options are collected first,
-                # async_step_init never reaches the detection block in its else branch.
+                # async_step_settings never reaches the detection block in its else branch.
                 image_was_enabled = bool(
                     current_opts.get(CONF_ENABLE_IMAGE, entry.data.get(CONF_ENABLE_IMAGE, False))
                 )
@@ -1205,7 +1262,7 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
                 self._pending_image_first = (
                     self._pending_opts.get(CONF_ENABLE_IMAGE) is True and not image_was_enabled
                 )
-                # Latin: see async_step_init for the dual-source rationale.
+                # Latin: see async_step_settings for the dual-source rationale.
                 self._pending_latin_first = (
                     self._pending_opts.get(CONF_ENABLE_LATIN_NAME) is True
                     and not latin_was_enabled
@@ -1260,7 +1317,7 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
     async def _route_first_enable(self) -> FlowResult:
         """Route to the next pending first-enable sub-step, or save.
 
-        Ordered image → latin → fertilization → repotting. The image/latin steps
+        Ordered image → latin → linked-sensor → fertilization → repotting. The image/latin steps
         clear their own flag and call back here; the fertilization/repotting
         steps retain their existing chain (_after_fertilized_init → repot →
         save), so this dispatcher only fronts the chain and leaves that logic
@@ -1270,11 +1327,206 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
             return await self.async_step_image_init()
         if self._pending_latin_first:
             return await self.async_step_latin_init()
+        if self._pending_custom_first:
+            return await self.async_step_add_sensor()
         if self._pending_fert_first:
             return await self.async_step_fertilized_init()
         if self._pending_repot_first:
             return await self.async_step_repotted_init()
         return self._save()
+
+    async def async_step_linked_sensors(self, user_input: dict | None = None) -> FlowResult:
+        """Top menu for a plant's linked display sensors: add (until the cap),
+        manage the existing ones, or exit."""
+        cs = self._config_entry.options.get(CONF_CUSTOM_SENSORS)
+        count = len(cs) if isinstance(cs, list) else 0
+        options = []
+        if count < MAX_CUSTOM_SENSORS:
+            options.append("add_sensor")
+        options += ["manage_sensors", "done_linked"]
+        return self.async_show_menu(step_id="linked_sensors", menu_options=options)
+
+    async def async_step_done_linked(self, user_input: dict | None = None) -> FlowResult:
+        """Exit the linked-sensors manager, persisting via the standard chokepoint."""
+        return self._save()
+
+    async def async_step_add_sensor(self, user_input: dict | None = None) -> FlowResult:
+        """Add one linked display sensor to this plant.
+
+        custom_sensors is written only by this flow, so reading the current list
+        here (rather than via _save) carries no #23-style race. The augmented
+        list is staged in _pending_opts and composed onto the fresh base by
+        _save; routing back through _route_first_enable lets any other pending
+        first-enable (fertilization/repotting dates) still run.
+        """
+        cs = self._config_entry.options.get(CONF_CUSTOM_SENSORS)
+        current = list(cs) if isinstance(cs, list) else []
+
+        if user_input is not None:
+            item = {
+                CUSTOM_SENSOR_ENTITY_ID: user_input[CUSTOM_SENSOR_ENTITY_ID],
+                CUSTOM_SENSOR_POSITION: user_input.get(CUSTOM_SENSOR_POSITION, POSITION_BELOW),
+            }
+            icon = (user_input.get(CUSTOM_SENSOR_ICON) or "").strip()
+            if icon:
+                item[CUSTOM_SENSOR_ICON] = icon
+            color = (user_input.get(CUSTOM_SENSOR_COLOR) or "").strip()
+            if color:
+                item[CUSTOM_SENSOR_COLOR] = color
+            new_order = int(user_input.get(CUSTOM_SENSOR_ORDER, len(current) + 1))
+            self._pending_opts[CONF_CUSTOM_SENSORS] = self._custom_move_to(
+                current + [item], len(current), new_order
+            )
+            self._pending_custom_first = False
+            return await self._route_first_enable()
+
+        schema = vol.Schema({
+            vol.Required(CUSTOM_SENSOR_ENTITY_ID): selector.selector({"entity": {}}),
+            vol.Optional(CUSTOM_SENSOR_ICON): selector.selector({"icon": {}}),
+            vol.Optional(CUSTOM_SENSOR_COLOR): selector.selector({"text": {}}),
+            vol.Required(CUSTOM_SENSOR_POSITION, default=POSITION_BELOW): selector.selector({
+                "select": {
+                    "mode": "dropdown",
+                    "options": [
+                        {"value": POSITION_ABOVE, "label": "Above the watering / fertilization chips"},
+                        {"value": POSITION_BELOW, "label": "Below the watering / fertilization chips"},
+                    ],
+                }
+            }),
+            vol.Required(CUSTOM_SENSOR_ORDER, default=len(current) + 1): selector.selector({
+                "number": {"min": 1, "max": len(current) + 1, "mode": "box"}
+            }),
+        })
+        return self.async_show_form(step_id="add_sensor", data_schema=schema)
+
+    # ── Linked-sensor manager: edit / reorder / remove ────────────────────────
+
+    def _custom_sensor_name(self, cs: dict) -> str:
+        """Display label for a linked sensor — its source entity's name."""
+        eid = cs.get(CUSTOM_SENSOR_ENTITY_ID, "")
+        state = self.hass.states.get(eid) if eid else None
+        if state and state.name:
+            return state.name
+        return eid or "sensor"
+
+    @staticmethod
+    def _custom_reindex(sensors: list[dict]) -> list[dict]:
+        """Sort by current order and renumber 1..N contiguously (no gaps/dupes)."""
+        ordered = sorted(sensors, key=lambda s: s.get(CUSTOM_SENSOR_ORDER, 999))
+        for i, s in enumerate(ordered):
+            s[CUSTOM_SENSOR_ORDER] = i + 1
+        return ordered
+
+    @staticmethod
+    def _custom_move_to(sensors: list[dict], idx: int, new_order: int) -> list[dict]:
+        """Drop sensors[idx] at position new_order (1-based), push the rest back,
+        renumber 1..N. Works in both directions; new_order is clamped to range."""
+        moved = sensors[idx]
+        rest = [s for j, s in enumerate(sensors) if j != idx]
+        rest.sort(key=lambda s: s.get(CUSTOM_SENSOR_ORDER, 999))
+        k = max(1, min(int(new_order), len(sensors)))
+        result = rest[: k - 1] + [moved] + rest[k - 1:]
+        for i, s in enumerate(result):
+            s[CUSTOM_SENSOR_ORDER] = i + 1
+        return result
+
+    async def async_step_manage_sensors(self, user_input: dict | None = None) -> FlowResult:
+        """List the plant's linked sensors as tappable rows (dynamic literal
+        labels via a dict menu), plus Done. Edits accumulate in a working copy
+        and commit only on Done, so multiple reorders/edits persist together.
+        """
+        if self._working_sensors is None:
+            cur = self._config_entry.options.get(CONF_CUSTOM_SENSORS)
+            base = [dict(s) for s in cur] if isinstance(cur, list) else []
+            self._working_sensors = self._custom_reindex(base)
+        menu: dict[str, str] = {}
+        for i, cs in enumerate(self._working_sensors):
+            menu[f"edit_{i}"] = f"{i + 1}. {self._custom_sensor_name(cs)}"
+        menu["manage_done"] = "Done"
+        return self.async_show_menu(step_id="manage_sensors", menu_options=menu)
+
+    async def async_step_manage_done(self, user_input: dict | None = None) -> FlowResult:
+        """Commit the working copy via the standard chokepoint (wipe if empty)."""
+        if self._working_sensors:
+            self._pending_opts[CONF_CUSTOM_SENSORS] = self._working_sensors
+        else:
+            self._flow_removed_keys.add(CONF_CUSTOM_SENSORS)
+        return self._save()
+
+    async def async_step_edit_sensor(self, user_input: dict | None = None) -> FlowResult:
+        """Edit or remove the linked sensor at self._editing_idx (working copy)."""
+        sensors = self._working_sensors or []
+        idx = self._editing_idx
+        if idx >= len(sensors):
+            return await self.async_step_manage_sensors()
+        cur = sensors[idx]
+
+        if user_input is not None:
+            if user_input.get(CONF_REMOVE_SENSOR):
+                del sensors[idx]
+                self._working_sensors = self._custom_reindex(sensors)
+                return await self.async_step_manage_sensors()
+            icon = (user_input.get(CUSTOM_SENSOR_ICON) or "").strip()
+            color = (user_input.get(CUSTOM_SENSOR_COLOR) or "").strip()
+            cur[CUSTOM_SENSOR_POSITION] = user_input.get(CUSTOM_SENSOR_POSITION, POSITION_BELOW)
+            if icon:
+                cur[CUSTOM_SENSOR_ICON] = icon
+            else:
+                cur.pop(CUSTOM_SENSOR_ICON, None)
+            if color:
+                cur[CUSTOM_SENSOR_COLOR] = color
+            else:
+                cur.pop(CUSTOM_SENSOR_COLOR, None)
+            new_order = int(user_input.get(CUSTOM_SENSOR_ORDER, idx + 1))
+            self._working_sensors = self._custom_move_to(sensors, idx, new_order)
+            return await self.async_step_manage_sensors()
+
+        schema = vol.Schema({
+            vol.Optional(
+                CUSTOM_SENSOR_ICON,
+                description={"suggested_value": cur.get(CUSTOM_SENSOR_ICON, "")},
+            ): selector.selector({"icon": {}}),
+            vol.Optional(
+                CUSTOM_SENSOR_COLOR,
+                description={"suggested_value": cur.get(CUSTOM_SENSOR_COLOR, "")},
+            ): selector.selector({"text": {}}),
+            vol.Required(
+                CUSTOM_SENSOR_POSITION,
+                default=cur.get(CUSTOM_SENSOR_POSITION, POSITION_BELOW),
+            ): selector.selector({
+                "select": {
+                    "mode": "dropdown",
+                    "options": [
+                        {"value": POSITION_ABOVE, "label": "Above the watering / fertilization chips"},
+                        {"value": POSITION_BELOW, "label": "Below the watering / fertilization chips"},
+                    ],
+                }
+            }),
+            vol.Required(
+                CUSTOM_SENSOR_ORDER,
+                default=cur.get(CUSTOM_SENSOR_ORDER, idx + 1),
+            ): selector.selector({"number": {"min": 1, "max": max(1, len(sensors)), "mode": "box"}}),
+            vol.Optional(CONF_REMOVE_SENSOR, default=False): selector.selector({"boolean": {}}),
+        })
+        return self.async_show_form(
+            step_id="edit_sensor",
+            data_schema=schema,
+            description_placeholders={"sensor": self._custom_sensor_name(cur)},
+        )
+
+    # Pre-wire MAX_CUSTOM_SENSORS edit slots. The manage menu only exposes rows
+    # for sensors that exist; each async_step_edit_<i> records the working-copy
+    # index and delegates to the shared edit form. HA resolves steps by name, so
+    # they must exist as methods — this loop keeps them DRY.
+    def _make_custom_edit_step(idx):
+        async def _step(self, user_input: dict | None = None) -> FlowResult:
+            self._editing_idx = idx
+            return await self.async_step_edit_sensor(user_input)
+        return _step
+
+    for _slot in range(MAX_CUSTOM_SENSORS):
+        locals()[f"async_step_edit_{_slot}"] = _make_custom_edit_step(_slot)
+    del _make_custom_edit_step, _slot
 
     async def async_step_image_init(self, user_input: dict | None = None) -> FlowResult:
         """Ask for the image (upload or path) on first enable via options — mirrors setup."""
