@@ -87,6 +87,13 @@ class PlantData:
         self._hass = hass
         self._entry = entry
         self._listeners: list[Callable[[], None]] = []
+        # Last numeric moisture reading, used to edge-trigger the wet-threshold
+        # auto-mark (see handle_moisture_change). In memory only: writing every
+        # reading to entry.options would churn the config entry.
+        # _moisture_baseline_source records which sensor the baseline belongs
+        # to, so a change of linked sensor discards it.
+        self._last_moisture: float | None = None
+        self._moisture_baseline_source: str | None = None
 
     # ── Identity ────────────────────────────────────────────────────────────────
 
@@ -758,15 +765,56 @@ class PlantData:
             notification_id=f"{NOTIFICATION_ID_PREFIX}{self.entry_id}",
         )
 
+    def seed_moisture_baseline(self) -> None:
+        """Seed the auto-mark baseline from the linked sensor's current state.
+
+        Called whenever the moisture listener is (re)registered: at setup and
+        after every options update. Only acts when the linked sensor differs
+        from the one the baseline belongs to (first registration, or the user
+        changed or removed the sensor). Re-seeding on every options update
+        would race the state-change event that triggered a persist, so a known
+        baseline is otherwise left alone. An unknown/unavailable or
+        non-numeric state leaves the baseline unset: the first real reading
+        then sets it without marking.
+        """
+        sensor_id = self.moisture_sensor
+        if sensor_id == self._moisture_baseline_source:
+            return
+        self._moisture_baseline_source = sensor_id
+        self._last_moisture = None
+        if not sensor_id:
+            return
+        state = self._hass.states.get(sensor_id)
+        if state is None or state.state in ("unknown", "unavailable"):
+            return
+        try:
+            self._last_moisture = float(state.state)
+        except (ValueError, TypeError):
+            pass
+
     async def handle_moisture_change(self, raw_state: str) -> None:
         try:
             moisture = float(raw_state)
         except (ValueError, TypeError):
             return
 
+        # Edge-trigger the wet auto-mark: it fires only when this reading
+        # crosses from at-or-below the wet threshold to above it, i.e. an
+        # actual watering. Previously it fired on every update while the soil
+        # sat above wet, re-marking the plant watered each day. The caller
+        # filters unknown/unavailable, so a sensor dropout keeps the last
+        # numeric reading as the baseline; with no baseline (fresh start,
+        # changed sensor) the first reading only seeds it.
+        previous = self._last_moisture
+        self._last_moisture = moisture
+
         dry = self.dry_threshold
         wet = self.wet_threshold
         today = date.today()
+        crossed_wet = (
+            wet is not None and previous is not None
+            and previous <= wet < moisture
+        )
 
         if dry is not None and moisture <= dry:
             nw = self.next_watering
@@ -780,13 +828,14 @@ class PlantData:
                         await self._persist({STATE_NEXT_WATERING: today.isoformat()})
                 except ValueError:
                     pass
-        elif wet is not None and moisture > wet:
+        elif crossed_wet:
             _LOGGER.debug(
-                "%s: moisture above wet threshold — auto-marking watered",
+                "%s: moisture crossed wet threshold — auto-marking watered",
                 self.plant_name,
             )
             await self.mark_watered()
         elif dry is not None and moisture > dry:
+            # Also reached by above-wet readings that are not a crossing.
             # Self-healing for missed rollover checks. The 00:05 rollover
             # only pushes next_watering forward if the sensor is available
             # at that exact moment; battery/BLE sensors are often asleep or
