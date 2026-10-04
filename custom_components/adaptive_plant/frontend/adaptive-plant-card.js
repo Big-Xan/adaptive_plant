@@ -1,4 +1,4 @@
-// Adaptive Plant Card v19.7
+// Adaptive Plant Card v19.8
 
 class AdaptivePlantCard extends HTMLElement {
   constructor() {
@@ -12,7 +12,9 @@ class AdaptivePlantCard extends HTMLElement {
     this._initialized    = false;
     this._selectOpen     = false;
     this._notesEditing   = false;
+    this._repottedEditing = false;
     this._plantEntityIds = null;   // cached list of adaptive_plant entity ids (perf)
+    this._linkedSourceIds = [];    // linked-sensor source entity ids watched on Overview
   }
 
   static getConfigElement() { return document.createElement('adaptive-plant-card-editor'); }
@@ -141,7 +143,7 @@ class AdaptivePlantCard extends HTMLElement {
       this._updateContent();
       return;
     }
-    if (this._holding || this._selectOpen || this._notesEditing) return;
+    if (this._holding || this._selectOpen || this._notesEditing || this._repottedEditing) return;
     if (this._shouldRender(prevHass, hass)) this._updateContent();
   }
 
@@ -181,6 +183,13 @@ class AdaptivePlantCard extends HTMLElement {
     var newStates  = hass.states     || {};
     for (var i = 0; i < ids.length; i++) {
       if (prevStates[ids[i]] !== newStates[ids[i]]) return true;
+    }
+    // Linked-sensor sources are arbitrary entities, not plant entities, so the
+    // loop above never sees them change. _updateContent collects them while
+    // Overview (the only tab that shows them) is open.
+    var lids = this._linkedSourceIds || [];
+    for (var j = 0; j < lids.length; j++) {
+      if (prevStates[lids[j]] !== newStates[lids[j]]) return true;
     }
     return false;
   }
@@ -297,7 +306,6 @@ class AdaptivePlantCard extends HTMLElement {
     return '<span class="emoji-icon">' + value + '</span>';
   }
 
-  // ── Linked display-sensor rows for the Overview expanded detail ───────────
   // ── Linked-sensor rows for the Overview expanded detail (after health/repot) ──
   _customSensorRows(p) {
     var self = this;
@@ -412,6 +420,16 @@ class AdaptivePlantCard extends HTMLElement {
 
     var self   = this;
     var plants = this._plants();
+    // Watch linked-sensor sources only while Overview is open, so their
+    // updates don't rebuild Today/Upcoming, where they aren't shown. A tab
+    // switch runs this again, so values are fresh on arrival.
+    var linked = {};
+    if (this._tab === 'overview') {
+      plants.forEach(function(p) {
+        (p.customSensors || []).forEach(function(cs) { if (cs.entityId) linked[cs.entityId] = true; });
+      });
+    }
+    this._linkedSourceIds = Object.keys(linked);
     var html = '';
     if      (this._tab === 'today')    html = this._renderToday(plants);
     else if (this._tab === 'upcoming') html = this._renderUpcoming(plants);
@@ -499,6 +517,12 @@ class AdaptivePlantCard extends HTMLElement {
         self._updateContent();
       });
     });
+    // Hold renders while the repotted date is being typed, as for notes:
+    // a re-render (now also triggered by linked sensors) would wipe the input.
+    root.querySelectorAll('.repotted-input').forEach(function(el) {
+      el.addEventListener('focus', function() { self._repottedEditing = true; });
+      el.addEventListener('blur',  function() { self._repottedEditing = false; });
+    });
     root.querySelectorAll('[data-repotted-entity]').forEach(function(el) {
       el.addEventListener('click', function(e) {
         e.stopPropagation();
@@ -568,6 +592,7 @@ class AdaptivePlantCard extends HTMLElement {
         var avail = srcSt && srcSt.state !== undefined && srcSt.state !== 'unavailable' && srcSt.state !== 'unknown';
         var srcAt = (srcSt && srcSt.attributes) ? srcSt.attributes : {};
         return {
+          entityId: cs.entity_id,
           name:     srcAt.friendly_name || cs.entity_id,
           value:    avail ? srcSt.state : '\u2014',
           unit:     (avail && srcAt.unit_of_measurement) ? srcAt.unit_of_measurement : '',
