@@ -375,10 +375,10 @@ class AdaptivePlantConfigFlow(ConfigFlow, domain=DOMAIN):
         # (the snapshot is only applied once, at first creation). A parent
         # whose area was deliberately cleared duplicates as area-less; the
         # snapshot is used only if the parent's device can't be found.
-        device = dr.async_get(self.hass).async_get_device(
-            identifiers={(DOMAIN, source.entry_id)}
+        devices = dr.async_entries_for_config_entry(
+            dr.async_get(self.hass), source.entry_id
         )
-        current_area = device.area_id if device is not None else src.area
+        current_area = devices[0].area_id if devices else src.area
         if current_area:
             d[CONF_AREA] = current_area
         if src.label:
