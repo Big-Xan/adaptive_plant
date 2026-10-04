@@ -1,4 +1,4 @@
-// Adaptive Plant Card v19.8
+// Adaptive Plant Card v19.9
 
 class AdaptivePlantCard extends HTMLElement {
   constructor() {
@@ -1193,6 +1193,16 @@ window.customCards.push({
   name: 'Adaptive Plant',
   description: 'Track and manage your plants with adaptive watering logic.',
   preview: false,
+  documentationURL: 'https://github.com/Big-Xan/adaptive_plant#-companion-lovelace-card',
+  // HA 2026.6+ card picker ("Add to dashboard -> By entity"): suggest this card
+  // under Community when the picked entity belongs to Adaptive Plant. The card
+  // always shows every plant, so the suggestion carries no entity. Older HA
+  // versions ignore this property.
+  getEntitySuggestion: function(hass, entityId) {
+    var ent = hass && hass.entities && hass.entities[entityId];
+    if (!ent || ent.platform !== 'adaptive_plant') return null;
+    return { config: { type: 'custom:adaptive-plant-card' } };
+  },
 });
 
 
