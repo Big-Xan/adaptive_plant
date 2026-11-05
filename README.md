@@ -485,3 +485,7 @@ If Adaptive Plant keeps your plants happy, you can support its development on Ko
 ## License
 
 MIT License — see [LICENSE](LICENSE) for details.
+
+---
+
+*Built, in part, with AI.* Adaptive Plant is designed and maintained by [Big-Xan](https://github.com/Big-Xan), with development help from Claude (Anthropic).
