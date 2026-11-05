@@ -474,6 +474,14 @@ without losing any data.
 
 ---
 
+## Support
+
+If Adaptive Plant keeps your plants happy, you can support its development on Ko-fi. It's entirely optional; the integration stays free.
+
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/bigxan)
+
+---
+
 ## License
 
 MIT License — see [LICENSE](LICENSE) for details.
