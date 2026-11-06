@@ -57,6 +57,28 @@ CUSTOM_SENSOR_ORDER = "order"
 POSITION_ABOVE = "above"
 POSITION_BELOW = "below"
 CONF_NOTES_ENABLED = "notes_enabled"
+# Seasonal schedules (Experimental). Options-only config (custom_sensors shape:
+# no entry.data fallback, no tombstone), written by the flows and by interval
+# write-back. See seasons.py for the model.
+# CONF_SEASONS: list of seasons, each {name, start "MM-DD", end "MM-DD",
+#   interval, fert_interval (optional), pause_fertilization}; ranges are
+#   inclusive, may run across New Year, and never overlap.
+# CONF_SEASON_BASE: the base schedule {interval, fert_interval}, in effect on
+#   every day no season covers.
+# The period in effect (a season or the base) is kept equal to
+# OPT_WATERING_INTERVAL / OPT_FERTILIZATION_INTERVAL: every interval change
+# writes back into it, so each period learns its own interval.
+CONF_SEASONS = "seasons"
+CONF_SEASON_BASE = "season_base"
+# Transient master toggle on the setup-wizard features step and the settings
+# form — never persisted; its state derives from whether the list is non-empty.
+CONF_ENABLE_SEASONS = "enable_seasons"
+SEASON_START = "start"
+SEASON_END = "end"
+SEASON_INTERVAL = "interval"
+SEASON_FERT_INTERVAL = "fert_interval"
+SEASON_NAME = "name"
+SEASON_PAUSE_FERT = "pause_fertilization"
 CONF_ENABLE_REPOTTING = "enable_repotting"
 
 # ── Config entry options keys (mutable at runtime) ─────────────────────────────
@@ -77,6 +99,11 @@ STATE_NEXT_FERTILIZED = "next_fertilized"
 STATE_NOTES = "notes"
 STATE_LAST_REPOTTED = "last_repotted"
 STATE_REPOTTED_DATE_INPUT = "repotted_date_input"
+# Seasonal schedules: id of the period last applied (a season's start "MM-DD",
+# or "base"). Runtime state: it lets a change of period reset the adaptive
+# counters even when two periods share an interval. Never copied on duplicate;
+# the 1.3.0 Store migration must lift it with the other STATE_* keys.
+STATE_SEASON_APPLIED = "season_applied"
 # Internal marker — date the last "health check-in overdue" notification fired.
 # Used by daily_rollover to prevent re-firing more than once per day.
 STATE_HEALTH_NOTIF_DATE = "_health_notif_date"
