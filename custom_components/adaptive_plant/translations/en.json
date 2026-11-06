@@ -56,9 +56,11 @@
           "enable_latin_name": "Add a latin name field",
           "enable_image": "Show a plant image",
           "enable_repotting": "Track repotting",
+          "enable_seasons": "Seasonal watering schedule (Experimental)",
           "moisture_sensor": "Moisture sensor (optional)"
         },
         "data_description": {
+          "enable_seasons": "Give this plant a different schedule for parts of the year. You'll add the seasons at the end of setup. The intervals you entered become the base schedule, used on every day no season covers. Experimental: please report any bugs at https://github.com/Big-Xan/adaptive_plant/issues",
           "moisture_sensor": "Select an existing sensor to drive automatic watering logic."
         }
       },
@@ -139,6 +141,69 @@
           "dry_threshold": "Dry threshold (reschedule watering to today)",
           "wet_threshold": "Wet threshold (auto-mark as watered)"
         }
+      },
+      "seasons": {
+        "title": "Seasonal Schedule (Experimental)",
+        "description": "Seasons change this plant's schedule for parts of the year. On every day no season covers, the **base schedule** applies. The base schedule and each season learn their own watering interval as you water and snooze.\n\n{count} of {max} seasons. In effect today: {active}.\n\nChanges are kept only when you choose **Save seasons**. **Discard changes** creates the plant without seasons.\n\nThis feature is experimental. Please report any bugs at https://github.com/Big-Xan/adaptive_plant/issues"
+      },
+      "edit_base": {
+        "title": "Base Schedule",
+        "description": "This plant's normal schedule, in effect on every day no season covers. It keeps adapting during those days. New seasons can start from it, and the plant returns to it if you turn seasons off. Changing it doesn't change any existing season.",
+        "data": {
+          "base_interval": "Watering interval (days)",
+          "base_fert_interval": "Fertilization interval (days)"
+        }
+      },
+      "add_season": {
+        "title": "Add a Season",
+        "description": "Choose the dates this season covers and the schedule it starts with. Both dates are included, and a season can run across New Year (for example November 1 to March 14).",
+        "data": {
+          "season_name": "Name (optional)",
+          "season_start_month": "Starts in",
+          "season_start_day": "Start day",
+          "season_end_month": "Ends in",
+          "season_end_day": "End day",
+          "season_start_from": "Start from",
+          "season_water_adjust": "Change watering by (days)",
+          "season_fert_adjust": "Change fertilization by (days)",
+          "season_pause_fertilization": "Pause fertilization during this season"
+        },
+        "data_description": {
+          "season_name": "For example Winter. Shown in the season list and on the Next watering sensor.",
+          "season_start_day": "A season starting on February 29 starts on March 1 in non-leap years.",
+          "season_end_day": "A season ending on February 29 ends on February 28 in non-leap years.",
+          "season_start_from": "The schedule to build this season from. It's only a starting point: once saved, the season keeps its own numbers and learns on its own.",
+          "season_water_adjust": "Days to add to the starting watering interval, or a negative number to subtract (for example 5 or -2). 0 keeps it the same.",
+          "season_fert_adjust": "Days to add to the starting fertilization interval, or a negative number to subtract. 0 keeps it the same.",
+          "season_pause_fertilization": "No fertilization comes due during this season. It comes due on the first day after it that isn't paused."
+        }
+      },
+      "edit_season": {
+        "title": "Edit Season",
+        "description": "Editing {season}.",
+        "data": {
+          "season_name": "Name (optional)",
+          "season_start_month": "Starts in",
+          "season_start_day": "Start day",
+          "season_end_month": "Ends in",
+          "season_end_day": "End day",
+          "season_interval": "Watering interval (days)",
+          "season_fert_interval": "Fertilization interval (days)",
+          "season_pause_fertilization": "Pause fertilization during this season",
+          "remove_season": "Remove this season"
+        },
+        "data_description": {
+          "season_name": "For example Winter. Shown in the season list and on the Next watering sensor.",
+          "season_start_day": "A season starting on February 29 starts on March 1 in non-leap years.",
+          "season_end_day": "A season ending on February 29 ends on February 28 in non-leap years.",
+          "season_interval": "This season's own interval. It keeps adapting while the season is in effect.",
+          "season_pause_fertilization": "No fertilization comes due during this season. It comes due on the first day after it that isn't paused.",
+          "remove_season": "Turn on and submit to delete this season. Nothing is kept until you choose Save seasons."
+        }
+      },
+      "seasons_invalid": {
+        "title": "Seasons Not Saved Yet",
+        "description": "Submit to go back to your seasons and fix this."
       }
     },
     "error": {
@@ -146,7 +211,13 @@
       "invalid_image_path": "Image path must start with /local/.",
       "invalid_image": "Could not process the uploaded image. Please choose a different file and make sure it is a PNG or JPEG.",
       "dry_above_wet": "Dry threshold must be less than wet threshold.",
-      "invalid_date": "Please enter a valid date."
+      "invalid_date": "Please enter a valid date.",
+      "invalid_season_day": "That day doesn't exist in the chosen month.",
+      "season_overlap": "These dates overlap another season.",
+      "season_adjust_range": "That change would make the interval shorter than 1 day or longer than 365.",
+      "season_interval_sync": "The watering interval must be longer than the fertilization sync window.",
+      "seasons_too_few": "Add at least one season before saving, or choose Discard changes.",
+      "seasons_all_paused": "Fertilization can't be paused for the whole year. Leave at least one day unpaused."
     },
     "abort": {
       "already_configured": "This plant is already configured.",
@@ -159,7 +230,8 @@
         "title": "Configure Plant",
         "menu_options": {
           "settings": "Plant settings",
-          "linked_sensors": "Linked sensors"
+          "linked_sensors": "Linked sensors",
+          "seasons": "Seasonal schedule (Experimental)"
         }
       },
       "linked_sensors": {
@@ -232,6 +304,7 @@
           "fertilization_enabled": "Enable fertilization tracking",
           "repotting_enabled": "Enable repotting tracking",
           "enable_custom_sensors": "Linked sensors",
+          "enable_seasons": "Seasonal watering schedule (Experimental)",
           "moisture_sensor_enabled": "Enable moisture sensor",
           "moisture_sensor": "Moisture sensor",
           "dry_threshold": "Dry threshold (reschedule watering to today)",
@@ -239,6 +312,9 @@
         },
         "data_description": {
           "label": "Optional sublabel to group plants within an area (e.g. Left shelf, Window sill). Leave blank or enter 'null' to remove.",
+          "watering_interval_days": "With a seasonal schedule on, this edits the schedule in effect today: the current season, or the base schedule.",
+          "fertilization_interval_days": "With a seasonal schedule on, this edits the schedule in effect today: the current season, or the base schedule.",
+          "enable_seasons": "Give this plant a different schedule for parts of the year. Its current intervals become the base schedule, used on every day no season covers. Turn on to add seasons. Turning off asks which schedule to keep, then deletes the base schedule and all seasons. Experimental: please report any bugs at https://github.com/Big-Xan/adaptive_plant/issues",
           "notes_enabled": "Toggle to enable or disable the notes field for this plant.",
           "fertilization_enabled": "Toggle to enable or disable fertilization tracking. Previous dates are preserved when re-enabled.",
           "repotting_enabled": "Toggle to enable or disable repotting tracking. Previous dates are preserved when re-enabled.",
@@ -304,13 +380,92 @@
         "data": {
           "latin_name": "Latin name"
         }
+      },
+      "seasons": {
+        "title": "Seasonal Schedule (Experimental)",
+        "description": "Seasons change this plant's schedule for parts of the year. On every day no season covers, the **base schedule** applies. The base schedule and each season learn their own watering interval as you water and snooze.\n\n{count} of {max} seasons. In effect today: {active}.\n\nChanges are kept only when you choose **Save seasons**. **Discard changes** leaves this plant's seasons as they were.\n\nThis feature is experimental. Please report any bugs at https://github.com/Big-Xan/adaptive_plant/issues"
+      },
+      "edit_base": {
+        "title": "Base Schedule",
+        "description": "This plant's normal schedule, in effect on every day no season covers. It keeps adapting during those days. New seasons can start from it, and the plant returns to it if you turn seasons off. Changing it doesn't change any existing season.",
+        "data": {
+          "base_interval": "Watering interval (days)",
+          "base_fert_interval": "Fertilization interval (days)"
+        }
+      },
+      "add_season": {
+        "title": "Add a Season",
+        "description": "Choose the dates this season covers and the schedule it starts with. Both dates are included, and a season can run across New Year (for example November 1 to March 14).",
+        "data": {
+          "season_name": "Name (optional)",
+          "season_start_month": "Starts in",
+          "season_start_day": "Start day",
+          "season_end_month": "Ends in",
+          "season_end_day": "End day",
+          "season_start_from": "Start from",
+          "season_water_adjust": "Change watering by (days)",
+          "season_fert_adjust": "Change fertilization by (days)",
+          "season_pause_fertilization": "Pause fertilization during this season"
+        },
+        "data_description": {
+          "season_name": "For example Winter. Shown in the season list and on the Next watering sensor.",
+          "season_start_day": "A season starting on February 29 starts on March 1 in non-leap years.",
+          "season_end_day": "A season ending on February 29 ends on February 28 in non-leap years.",
+          "season_start_from": "The schedule to build this season from. It's only a starting point: once saved, the season keeps its own numbers and learns on its own.",
+          "season_water_adjust": "Days to add to the starting watering interval, or a negative number to subtract (for example 5 or -2). 0 keeps it the same.",
+          "season_fert_adjust": "Days to add to the starting fertilization interval, or a negative number to subtract. 0 keeps it the same.",
+          "season_pause_fertilization": "No fertilization comes due during this season. It comes due on the first day after it that isn't paused."
+        }
+      },
+      "edit_season": {
+        "title": "Edit Season",
+        "description": "Editing {season}.",
+        "data": {
+          "season_name": "Name (optional)",
+          "season_start_month": "Starts in",
+          "season_start_day": "Start day",
+          "season_end_month": "Ends in",
+          "season_end_day": "End day",
+          "season_interval": "Watering interval (days)",
+          "season_fert_interval": "Fertilization interval (days)",
+          "season_pause_fertilization": "Pause fertilization during this season",
+          "remove_season": "Remove this season"
+        },
+        "data_description": {
+          "season_name": "For example Winter. Shown in the season list and on the Next watering sensor.",
+          "season_start_day": "A season starting on February 29 starts on March 1 in non-leap years.",
+          "season_end_day": "A season ending on February 29 ends on February 28 in non-leap years.",
+          "season_interval": "This season's own interval. It keeps adapting while the season is in effect.",
+          "season_pause_fertilization": "No fertilization comes due during this season. It comes due on the first day after it that isn't paused.",
+          "remove_season": "Turn on and submit to delete this season. Nothing is kept until you choose Save seasons."
+        }
+      },
+      "seasons_invalid": {
+        "title": "Seasons Not Saved Yet",
+        "description": "Submit to go back to your seasons and fix this."
+      },
+      "seasons_off": {
+        "title": "Turn Off Seasonal Schedule",
+        "description": "⚠️ **This deletes this plant's base schedule and all of its seasons**, including the intervals each one has learned. It can't be undone.\n\nChoose the schedule this plant keeps from now on. To keep your seasons, close this dialog instead; nothing is saved, including any other changes you made in Plant settings.",
+        "data": {
+          "season_off_choice": "Schedule to keep"
+        },
+        "data_description": {
+          "season_off_choice": "The one marked (current) is in effect today."
+        }
       }
     },
     "error": {
       "dry_above_wet": "Dry threshold must be less than wet threshold.",
       "invalid_date": "Please enter a valid date.",
       "invalid_image_path": "Image path must start with /local/.",
-      "invalid_image": "Could not process the uploaded image. Please choose a different file and make sure it is a PNG or JPEG."
+      "invalid_image": "Could not process the uploaded image. Please choose a different file and make sure it is a PNG or JPEG.",
+      "invalid_season_day": "That day doesn't exist in the chosen month.",
+      "season_overlap": "These dates overlap another season.",
+      "season_adjust_range": "That change would make the interval shorter than 1 day or longer than 365.",
+      "season_interval_sync": "The watering interval must be longer than the fertilization sync window.",
+      "seasons_too_few": "Add at least one season before saving, or choose Discard changes.",
+      "seasons_all_paused": "Fertilization can't be paused for the whole year. Leave at least one day unpaused."
     }
   },
   "entity": {
