@@ -146,6 +146,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     plant = PlantData(hass, entry)
     hass.data[DOMAIN][entry.entry_id] = plant
 
+    # Seasonal schedule (Experimental): bring the plant in line with the season
+    # active today before the entities come up. Covers startup, Reload, a new
+    # plant created with seasons, and HA having been off across a boundary.
+    await plant.apply_seasons()
+
     # The wizard's area choice is applied ONCE, when the device is first
     # created (suggested-area semantics). Capture existence before platform
     # setup: the device registry is persistent, so a device found here means
@@ -212,6 +217,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # ── Options update listener ──────────────────────────────────────────────
     async def _handle_options_update(hass: HomeAssistant, entry: ConfigEntry) -> None:
         _register_moisture_listener()
+        # Apply a season table saved in Configure (or an active season's
+        # interval edited there) right away. Idempotent: on any other options
+        # write it finds nothing to change, so it never loops.
+        await plant.apply_seasons()
         plant._notify_listeners()
 
     entry.async_on_unload(entry.add_update_listener(_handle_options_update))
