@@ -34,6 +34,8 @@ from .const import (
     CONF_NOTES_ENABLED,
     CONF_PLANT_NAME,
     CONF_REPOTTING_ENABLED,
+    CONF_SEASON_BASE,
+    CONF_SEASONS,
     CONF_SNOOZE_THRESHOLD,
     CONF_WET_THRESHOLD,
     DEFAULT_EARLY_WATERING_THRESHOLD,
@@ -48,6 +50,8 @@ from .const import (
     OPT_FERTILIZATION_INTERVAL,
     OPT_FERT_SYNC_WINDOW,
     OPT_WATERING_INTERVAL,
+    SEASON_NAME,
+    SEASON_START,
     STATE_EARLY_WATERING_COUNT,
     STATE_HEALTH,
     STATE_HEALTH_LAST_UPDATED,
@@ -59,8 +63,20 @@ from .const import (
     STATE_NEXT_FERTILIZED,
     STATE_NEXT_WATERING,
     STATE_NOTES,
+    STATE_SEASON_APPLIED,
     STATE_SNOOZE_COUNT,
     STATE_SNOOZED_THIS_PERIOD,
+)
+from .seasons import (
+    active_season,
+    clamp_fert_date,
+    flip_next,
+    period_fert,
+    period_id,
+    period_water,
+    valid_base,
+    valid_seasons,
+    write_back,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -196,6 +212,37 @@ class PlantData:
         # returns [] for an unset key or any malformed/cleared value.
         val = self._entry.options.get(CONF_CUSTOM_SENSORS)
         return val if isinstance(val, list) else []
+
+    @property
+    def seasons(self) -> list[dict]:
+        # Seasonal schedule (Experimental). Options-only list, same rationale
+        # as custom_sensors: managed only in the flows, no entry.data fallback,
+        # and [] for an unset or malformed value. Empty = seasons off.
+        val = self._entry.options.get(CONF_SEASONS)
+        return val if isinstance(val, list) else []
+
+    @property
+    def season_base(self) -> dict:
+        # The base schedule: in effect on every day no season covers. Options-
+        # only; {} when seasons are off.
+        val = self._entry.options.get(CONF_SEASON_BASE)
+        return val if isinstance(val, dict) else {}
+
+    @property
+    def seasons_active(self) -> bool:
+        """Seasons are on: at least one well-formed season and a base schedule."""
+        return bool(valid_seasons(self.seasons)) and valid_base(self.season_base)
+
+    @property
+    def active_season_name(self) -> str | None:
+        """Name of the season in effect today ("MM-DD" start if unnamed); None
+        when seasons are off or the base schedule is in effect."""
+        if not self.seasons_active:
+            return None
+        season = active_season(self.seasons, date.today())
+        if season is None:
+            return None
+        return (season.get(SEASON_NAME) or "").strip() or season.get(SEASON_START)
 
     @property
     def enable_image(self) -> bool:
@@ -401,9 +448,121 @@ class PlantData:
         self._hass.config_entries.async_update_entry(self._entry, options=merged)
         self._notify_listeners()
 
+    # ── Seasons (Experimental) ───────────────────────────────────────────────────
+
+    def _interval_updates(self, today: date, water: int | None = None,
+                          fert: int | None = None) -> dict:
+        """Updates that set an interval, written back to the period in effect.
+
+        Every door that changes an interval (adaptive learning, the number
+        entities) goes through here, so the base and each season learn their
+        own value. Without the write-back, the next season check would see the
+        interval differ from the period in effect and revert it.
+        """
+        updates: dict = {}
+        if water is not None:
+            updates[OPT_WATERING_INTERVAL] = int(water)
+        if fert is not None:
+            updates[OPT_FERTILIZATION_INTERVAL] = int(fert)
+        if self.seasons_active:
+            table, base = write_back(self.seasons, self.season_base, today, water, fert)
+            updates[CONF_SEASONS] = table
+            updates[CONF_SEASON_BASE] = base
+        return updates
+
+    @property
+    def _pause_table(self) -> list[dict]:
+        """Seasons that may pause fertilization: none unless seasons are on."""
+        return self.seasons if self.seasons_active else []
+
+    def _fert_date(self, candidate: date, today: date) -> str:
+        """A next-fertilization date moved out of any paused season (ISO string)."""
+        return clamp_fert_date(candidate, self._pause_table, today).isoformat()
+
+    def _season_updates(self, today: date) -> dict:
+        """Updates that bring the plant in line with the period in effect on `today`.
+
+        The period is the season covering today, or the base schedule. Computed
+        fresh on every check, so it covers boundary days, HA being offline
+        across a boundary, and table edits alike. Idempotent.
+        - Period changed (STATE_SEASON_APPLIED differs): reset the adaptive
+          counters, so one period's streaks never count toward another's
+          learning.
+        - Watering interval differs from the period's: set it and reschedule
+          to max(last watered + new interval, today). Moisture plants get the
+          interval only; the sensor owns their date (same guard as #21).
+        - Fertilization interval differs: set it and, when fertilization is on,
+          reschedule to max(last fertilized + new interval, today).
+        - Next fertilization inside a paused season: move it to the first
+          unpaused day. Fertilization is never sensor-driven, so this applies
+          to moisture plants too. Seasons never turn fertilization on.
+        """
+        if not self.seasons_active:
+            return {}
+        table, base = self.seasons, self.season_base
+        season = active_season(table, today)
+        pid = period_id(season)
+        updates: dict = {}
+
+        if self._entry.options.get(STATE_SEASON_APPLIED) != pid:
+            updates[STATE_SEASON_APPLIED] = pid
+            updates[STATE_EARLY_WATERING_COUNT] = 0
+            updates[STATE_SNOOZE_COUNT] = 0
+            updates[STATE_SNOOZED_THIS_PERIOD] = False
+            _LOGGER.debug("%s: now in %s", self.plant_name,
+                          "the base schedule" if season is None else f"season {pid}")
+
+        water = period_water(season, base)
+        if water != self.watering_interval:
+            updates[OPT_WATERING_INTERVAL] = water
+            if not self.moisture_sensor:
+                new_next = flip_next(self.last_watered, water, today)
+                if new_next:
+                    updates[STATE_NEXT_WATERING] = new_next
+            _LOGGER.debug(
+                "%s: watering interval %d days (was %d) — next watering %s",
+                self.plant_name, water, self.watering_interval,
+                updates.get(STATE_NEXT_WATERING, self.next_watering),
+            )
+
+        fert = period_fert(season, base)
+        nf = self.next_fertilized
+        if fert is not None and fert != self.fertilization_interval:
+            updates[OPT_FERTILIZATION_INTERVAL] = fert
+            if self.enable_fertilization:
+                resched = flip_next(self.last_fertilized, fert, today)
+                if resched:
+                    nf = resched
+                    updates[STATE_NEXT_FERTILIZED] = resched
+        if self.enable_fertilization and nf:
+            try:
+                nf_date = date.fromisoformat(nf)
+            except ValueError:
+                nf_date = None
+            if nf_date is not None:
+                clamped = clamp_fert_date(nf_date, table, today)
+                if clamped != nf_date or STATE_NEXT_FERTILIZED in updates:
+                    updates[STATE_NEXT_FERTILIZED] = clamped.isoformat()
+                    _LOGGER.debug(
+                        "%s: next fertilization %s", self.plant_name, updates[STATE_NEXT_FERTILIZED],
+                    )
+        return updates
+
+    async def apply_seasons(self) -> bool:
+        """Apply the active season now. Returns True if anything was persisted."""
+        updates = self._season_updates(date.today())
+        if not updates:
+            return False
+        await self._persist(updates)
+        return True
+
     # ── Watering ─────────────────────────────────────────────────────────────────
 
     async def mark_watered(self) -> None:
+        # Bring the season up to date first: a watering between midnight and the
+        # 00:05 rollover on a boundary day would otherwise adapt the old season's
+        # interval and write it back into the new season.
+        await self.apply_seasons()
         today = date.today()
         today_str = today.isoformat()
         interval = self.watering_interval
@@ -453,7 +612,7 @@ class PlantData:
             STATE_EARLY_WATERING_COUNT: early_count,
             STATE_SNOOZE_COUNT: snooze_count,
             STATE_SNOOZED_THIS_PERIOD: False,
-            OPT_WATERING_INTERVAL: interval,
+            **self._interval_updates(today, water=interval),
         }
 
         # ── Fertilization sync ──────────────────────────────────────────────
@@ -471,7 +630,12 @@ class PlantData:
                 try:
                     nf_date = date.fromisoformat(nf)
                     water_date = today + timedelta(days=interval)
-                    if nf_date > today and abs((water_date - nf_date).days) <= window:
+                    if (
+                        nf_date > today
+                        and abs((water_date - nf_date).days) <= window
+                        # never snap fertilization into a paused season
+                        and clamp_fert_date(water_date, self._pause_table, today) == water_date
+                    ):
                         updates[STATE_NEXT_FERTILIZED] = new_next
                         _LOGGER.debug(
                             "%s: fertilization within %d day(s) of watering — snapping to %s",
@@ -491,7 +655,8 @@ class PlantData:
         # plants are sensor-driven (next watering can be "today" when dry), so the
         # sensor owns the date — this bows out like mark_watered / the fert-sync block.
         days = int(days)
-        updates: dict = {OPT_WATERING_INTERVAL: days}
+        await self.apply_seasons()
+        updates: dict = self._interval_updates(date.today(), water=days)
         if days != self.watering_interval and not self.moisture_sensor:
             new_next = next_due(self.last_watered, days)
             if new_next:
@@ -536,7 +701,7 @@ class PlantData:
                 try:
                     nf_date = date.fromisoformat(nf)
                     if nf_date <= today:
-                        updates[STATE_NEXT_FERTILIZED] = (today + timedelta(days=1)).isoformat()
+                        updates[STATE_NEXT_FERTILIZED] = self._fert_date(today + timedelta(days=1), today)
                         _LOGGER.debug(
                             "%s: fertilization due — snoozing to %s",
                             self.plant_name, updates[STATE_NEXT_FERTILIZED],
@@ -571,7 +736,7 @@ class PlantData:
 
     async def mark_fertilized(self) -> None:
         today = date.today()
-        new_next = (today + timedelta(days=self.fertilization_interval)).isoformat()
+        new_next = self._fert_date(today + timedelta(days=self.fertilization_interval), today)
         await self._persist({
             STATE_LAST_FERTILIZED: today.isoformat(),
             STATE_NEXT_FERTILIZED: new_next,
@@ -583,11 +748,14 @@ class PlantData:
         # stale. No moisture guard: fertilization runs on its own schedule for
         # every plant (mark_fertilized has no moisture bow-out, unlike watering).
         days = int(days)
-        updates: dict = {OPT_FERTILIZATION_INTERVAL: days}
+        await self.apply_seasons()
+        updates: dict = self._interval_updates(date.today(), fert=days)
         if days != self.fertilization_interval:
             new_next = next_due(self.last_fertilized, days)
             if new_next:
-                updates[STATE_NEXT_FERTILIZED] = new_next
+                updates[STATE_NEXT_FERTILIZED] = self._fert_date(
+                    date.fromisoformat(new_next), date.today()
+                )
         await self._persist(updates)
 
     # ── Notes ────────────────────────────────────────────────────────────────────
@@ -690,6 +858,10 @@ class PlantData:
         # when nothing changed but the date rolled over, so date-derived
         # display sensors (Days Until Watering, etc.) still refresh.
         persisted = False
+
+        # Seasons first, so the moisture push and the card see today's interval.
+        if await self.apply_seasons():
+            persisted = True
 
         # For moisture sensor plants, check current soil moisture before
         # flagging as due. If moisture is above the dry threshold the plant
