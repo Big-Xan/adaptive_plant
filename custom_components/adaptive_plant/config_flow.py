@@ -35,6 +35,7 @@ from .const import (
     CONF_ENABLE_LATIN_NAME,
     CONF_ENABLE_NOTES,
     CONF_ENABLE_REPOTTING,
+    CONF_ENABLE_SEASONS,
     CONF_FERTILIZATION_ENABLED,
     CONF_HEALTH_PROMPT_INTERVAL,
     CONF_IMAGE_PATH,
@@ -48,6 +49,8 @@ from .const import (
     CONF_PLANT_NAME,
     CONF_REPOTTING_ENABLED,
     CONF_RESOLVED_LAST_REPOTTED,
+    CONF_SEASON_BASE,
+    CONF_SEASONS,
     CONF_SNOOZE_THRESHOLD,
     CONF_WET_THRESHOLD,
     DEFAULT_EARLY_WATERING_THRESHOLD,
@@ -62,13 +65,37 @@ from .const import (
     OPT_FERT_SYNC_WINDOW,
     OPT_WATERING_INTERVAL,
     OWNED_IMAGE_PREFIX,
+    SEASON_END,
+    SEASON_FERT_INTERVAL,
+    SEASON_INTERVAL,
+    SEASON_NAME,
+    SEASON_PAUSE_FERT,
+    SEASON_START,
+    STATE_EARLY_WATERING_COUNT,
     STATE_LAST_FERTILIZED,
     STATE_LAST_REPOTTED,
     STATE_LAST_WATERED,
     STATE_NEXT_FERTILIZED,
     STATE_NEXT_WATERING,
+    STATE_SEASON_APPLIED,
+    STATE_SNOOZE_COUNT,
+    STATE_SNOOZED_THIS_PERIOD,
 )
 from .plant import next_due, PlantData
+from .seasons import (
+    active_season,
+    flip_next,
+    format_md,
+    overlaps,
+    parse_md,
+    pauses_whole_year,
+    period_fert,
+    period_water,
+    rebase_fert,
+    valid_base,
+    valid_seasons,
+    write_back,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -76,6 +103,34 @@ _LOGGER = logging.getLogger(__name__)
 # transient remove-toggle field key on the edit form (never persisted).
 MAX_CUSTOM_SENSORS = 10
 CONF_REMOVE_SENSOR = "remove_sensor"
+
+# Seasonal schedule manager (Experimental): table size limits and the
+# transient form-field keys of the add/edit/turn-off season forms (never
+# persisted — each season is stored with the SEASON_* keys from const.py).
+MAX_SEASONS = 8
+MIN_SEASONS = 1
+SEASON_FIELD_NAME = "season_name"
+SEASON_FIELD_START_MONTH = "season_start_month"
+SEASON_FIELD_START_DAY = "season_start_day"
+SEASON_FIELD_END_MONTH = "season_end_month"
+SEASON_FIELD_END_DAY = "season_end_day"
+SEASON_FIELD_FROM = "season_start_from"
+SEASON_FIELD_WATER_ADJ = "season_water_adjust"
+SEASON_FIELD_FERT_ADJ = "season_fert_adjust"
+SEASON_FIELD_INTERVAL = "season_interval"
+SEASON_FIELD_FERT_INTERVAL = "season_fert_interval"
+SEASON_FIELD_PAUSE = "season_pause_fertilization"
+BASE_FIELD_INTERVAL = "base_interval"
+BASE_FIELD_FERT_INTERVAL = "base_fert_interval"
+CONF_REMOVE_SEASON = "remove_season"
+CONF_SEASON_OFF_CHOICE = "season_off_choice"
+SEASON_FROM_BASE = "base"
+
+# Inline (untranslated) labels, like the date-picker choices.
+_MONTHS = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+]
 
 WATERING_DATE_TODAY = "today"
 WATERING_DATE_YESTERDAY = "yesterday"
@@ -132,6 +187,8 @@ def _features_schema(defaults: dict) -> vol.Schema:
         vol.Required(CONF_ENABLE_LATIN_NAME, default=defaults.get(CONF_ENABLE_LATIN_NAME, False)): selector.selector({"boolean": {}}),
         vol.Required(CONF_ENABLE_IMAGE, default=defaults.get(CONF_ENABLE_IMAGE, False)): selector.selector({"boolean": {}}),
         vol.Required(CONF_ENABLE_REPOTTING, default=defaults.get(CONF_ENABLE_REPOTTING, False)): selector.selector({"boolean": {}}),
+        # Transient: runs the season manager at the end of setup; never stored.
+        vol.Required(CONF_ENABLE_SEASONS, default=False): selector.selector({"boolean": {}}),
         vol.Optional(CONF_MOISTURE_SENSOR): selector.selector(
             {"entity": {"domain": "sensor", "multiple": False}}
         ),
@@ -301,7 +358,390 @@ async def _persist_uploaded_image(hass: HomeAssistant, file_id: str, previous_pa
     return await hass.async_add_executor_job(_save_uploaded_image, hass, file_id, previous_path)
 
 
-class AdaptivePlantConfigFlow(ConfigFlow, domain=DOMAIN):
+# ── Seasonal schedule (Experimental) ───────────────────────────────────────────
+
+
+def _md_text(value) -> str:
+    """ "11-01" -> "Nov 1"; the raw value if malformed."""
+    try:
+        month, day = parse_md(value)
+    except (TypeError, ValueError, AttributeError):
+        return str(value)
+    return f"{_MONTHS[month - 1][:3]} {day}"
+
+
+def _season_sort(table: list[dict]) -> list[dict]:
+    """Seasons in calendar order of their start ("MM-DD" sorts as a date)."""
+    return sorted(table, key=lambda s: str(s.get(SEASON_START, "")))
+
+
+def _period_text(season: dict | None, base: dict, fert_enabled: bool) -> str:
+    """ "water every 12 days, fertilize every 45" (or ", fertilization paused")."""
+    text = f"water every {period_water(season, base)} days"
+    if fert_enabled:
+        if season and season.get(SEASON_PAUSE_FERT):
+            text += ", fertilization paused"
+        else:
+            fert = period_fert(season, base)
+            if fert is not None:
+                text += f", fertilize every {fert} days"
+    return text
+
+
+def _season_label(season: dict, base: dict, fert_enabled: bool) -> str:
+    """ "Winter (Nov 1 – Mar 14): water every 12 days, fertilization paused" """
+    name = (season.get(SEASON_NAME) or "").strip() or "Season"
+    span = f"{_md_text(season.get(SEASON_START))} – {_md_text(season.get(SEASON_END))}"
+    return f"{name} ({span}): {_period_text(season, base, fert_enabled)}"
+
+
+def _base_label(base: dict, fert_enabled: bool) -> str:
+    return f"Base schedule: {_period_text(None, base, fert_enabled)}"
+
+
+def _pause_signature(table) -> list[tuple[str, str, bool]]:
+    """What decides which days are paused: each season's range and pause flag."""
+    return sorted(
+        (str(s.get(SEASON_START)), str(s.get(SEASON_END)), bool(s.get(SEASON_PAUSE_FERT)))
+        for s in valid_seasons(table)
+    )
+
+
+def _has_pause(table) -> bool:
+    return any(paused for _, _, paused in _pause_signature(table))
+
+
+class _SeasonManagerMixin:
+    """Season manager steps shared by the setup wizard and Configure.
+
+    Edits go to a working copy (self._working_seasons, in calendar order, and
+    self._working_base), committed only by "Save seasons" after validation.
+    Each flow supplies the hooks below: where the fertilization toggle and
+    sync window come from, the starting table and base, and what committing
+    or discarding does (the wizard stages them for entry creation; Configure
+    stages them in _pending_opts and continues to the save chokepoint).
+    """
+
+    _working_seasons: list[dict] | None = None
+    _working_base: dict | None = None
+    _season_editing_idx: int = 0
+
+    # ── Hooks (implemented by each flow) ─────────────────────────────────────
+
+    def _season_fert_enabled(self) -> bool:
+        raise NotImplementedError
+
+    def _season_sync_window(self) -> int:
+        raise NotImplementedError
+
+    def _season_initial(self) -> tuple[list[dict], dict]:
+        raise NotImplementedError
+
+    async def _season_commit(self, table: list[dict], base: dict) -> FlowResult:
+        raise NotImplementedError
+
+    async def _season_discard(self) -> FlowResult:
+        raise NotImplementedError
+
+    # ── Menu ─────────────────────────────────────────────────────────────────
+
+    def _season_start_manager(self) -> FlowResult:
+        table, base = self._season_initial()
+        self._working_seasons = _season_sort([dict(s) for s in table])
+        self._working_base = dict(base)
+        return self._show_seasons_menu()
+
+    def _show_seasons_menu(self) -> FlowResult:
+        """Base schedule, add, one row per season (tap to edit), save, discard."""
+        seasons = self._working_seasons or []
+        base = self._working_base or {}
+        fert = self._season_fert_enabled()
+        menu: dict[str, str] = {"edit_base": _base_label(base, fert)}
+        if len(seasons) < MAX_SEASONS:
+            menu["add_season"] = "Add a season"
+        for i, season in enumerate(seasons):
+            menu[f"edit_season_{i}"] = _season_label(season, base, fert)
+        menu["seasons_done"] = "Save seasons"
+        menu["seasons_discard"] = "Discard changes"
+        current = active_season(seasons, date.today())
+        return self.async_show_menu(
+            step_id="seasons",
+            menu_options=menu,
+            description_placeholders={
+                "count": str(len(seasons)),
+                "max": str(MAX_SEASONS),
+                "active": _season_label(current, base, fert) if current else _base_label(base, fert),
+            },
+        )
+
+    async def async_step_seasons(self, user_input: dict | None = None) -> FlowResult:
+        if self._working_seasons is None:
+            return self._season_start_manager()
+        return self._show_seasons_menu()
+
+    # ── Shared form pieces ───────────────────────────────────────────────────
+
+    @staticmethod
+    def _interval_selector(minimum: int = 1, maximum: int = 365):
+        return selector.selector(
+            {"number": {"min": minimum, "max": maximum, "mode": "box", "unit_of_measurement": "days"}}
+        )
+
+    def _range_fields(self, values: dict) -> dict:
+        months = [{"value": str(i + 1), "label": label} for i, label in enumerate(_MONTHS)]
+        month_sel = selector.selector({"select": {"mode": "dropdown", "options": months}})
+        day_sel = selector.selector({"number": {"min": 1, "max": 31, "mode": "box"}})
+        return {
+            vol.Optional(
+                SEASON_FIELD_NAME, description={"suggested_value": values.get("name", "")}
+            ): selector.selector({"text": {}}),
+            vol.Required(SEASON_FIELD_START_MONTH, default=str(values["start_month"])): month_sel,
+            vol.Required(SEASON_FIELD_START_DAY, default=int(values["start_day"])): day_sel,
+            vol.Required(SEASON_FIELD_END_MONTH, default=str(values["end_month"])): month_sel,
+            vol.Required(SEASON_FIELD_END_DAY, default=int(values["end_day"])): day_sel,
+        }
+
+    def _parse_range(self, user_input: dict, exclude_idx: int | None, errors: dict) -> tuple[dict, str, str]:
+        """Form values plus the stored "MM-DD" start/end; errors filled in place."""
+        values = {
+            "name": (user_input.get(SEASON_FIELD_NAME) or "").strip(),
+            "start_month": int(user_input.get(SEASON_FIELD_START_MONTH, 1)),
+            "start_day": int(user_input.get(SEASON_FIELD_START_DAY, 1)),
+            "end_month": int(user_input.get(SEASON_FIELD_END_MONTH, 1)),
+            "end_day": int(user_input.get(SEASON_FIELD_END_DAY, 1)),
+        }
+        start = end = ""
+        try:
+            start = format_md(values["start_month"], values["start_day"])
+        except ValueError:
+            errors[SEASON_FIELD_START_DAY] = "invalid_season_day"
+        try:
+            end = format_md(values["end_month"], values["end_day"])
+        except ValueError:
+            errors[SEASON_FIELD_END_DAY] = "invalid_season_day"
+        if start and end:
+            others = [s for i, s in enumerate(self._working_seasons or []) if i != exclude_idx]
+            if overlaps({SEASON_START: start, SEASON_END: end, SEASON_INTERVAL: 1}, others):
+                errors["base"] = "season_overlap"
+        return values, start, end
+
+    def _check_sync(self, water: int, field: str, errors: dict) -> None:
+        window = self._season_sync_window() if self._season_fert_enabled() else 0
+        if window > 0 and water <= window and field not in errors:
+            errors[field] = "season_interval_sync"
+
+    # ── Add ──────────────────────────────────────────────────────────────────
+
+    def _add_schema(self, values: dict) -> vol.Schema:
+        seasons = self._working_seasons or []
+        base = self._working_base or {}
+        fert = self._season_fert_enabled()
+        sources = [{"value": SEASON_FROM_BASE, "label": _base_label(base, fert)}] + [
+            {"value": str(i), "label": _season_label(s, base, fert)} for i, s in enumerate(seasons)
+        ]
+        fields = self._range_fields(values)
+        fields[vol.Required(SEASON_FIELD_FROM, default=values.get("from", SEASON_FROM_BASE))] = (
+            selector.selector({"select": {"mode": "dropdown", "options": sources}})
+        )
+        fields[vol.Required(SEASON_FIELD_WATER_ADJ, default=int(values.get("water_adj", 0)))] = (
+            self._interval_selector(-364, 364)
+        )
+        if fert:
+            fields[vol.Required(SEASON_FIELD_FERT_ADJ, default=int(values.get("fert_adj", 0)))] = (
+                self._interval_selector(-364, 364)
+            )
+            fields[vol.Required(SEASON_FIELD_PAUSE, default=bool(values.get("pause", False)))] = (
+                selector.selector({"boolean": {}})
+            )
+        return vol.Schema(fields)
+
+    async def async_step_add_season(self, user_input: dict | None = None) -> FlowResult:
+        seasons = self._working_seasons or []
+        base = self._working_base or {}
+        if len(seasons) >= MAX_SEASONS:
+            return self._show_seasons_menu()
+        fert = self._season_fert_enabled()
+        if user_input is not None:
+            errors: dict[str, str] = {}
+            values, start, end = self._parse_range(user_input, None, errors)
+            src_key = str(user_input.get(SEASON_FIELD_FROM, SEASON_FROM_BASE))
+            src = None
+            if src_key != SEASON_FROM_BASE:
+                try:
+                    src = seasons[int(src_key)]
+                except (ValueError, IndexError):
+                    src = None
+            values.update({
+                "from": src_key,
+                "water_adj": int(user_input.get(SEASON_FIELD_WATER_ADJ, 0)),
+                "fert_adj": int(user_input.get(SEASON_FIELD_FERT_ADJ, 0)),
+                "pause": bool(user_input.get(SEASON_FIELD_PAUSE, False)),
+            })
+            water = period_water(src, base) + values["water_adj"]
+            if not 1 <= water <= 365:
+                errors[SEASON_FIELD_WATER_ADJ] = "season_adjust_range"
+            self._check_sync(water, SEASON_FIELD_WATER_ADJ, errors)
+            season = {
+                SEASON_NAME: values["name"],
+                SEASON_START: start,
+                SEASON_END: end,
+                SEASON_INTERVAL: water,
+                SEASON_PAUSE_FERT: values["pause"] if fert else False,
+            }
+            src_fert = period_fert(src, base)
+            if fert and src_fert is not None:
+                fert_val = src_fert + values["fert_adj"]
+                if not 1 <= fert_val <= 365:
+                    errors[SEASON_FIELD_FERT_ADJ] = "season_adjust_range"
+                season[SEASON_FERT_INTERVAL] = fert_val
+            if not errors:
+                self._working_seasons = _season_sort(seasons + [season])
+                return self._show_seasons_menu()
+            return self.async_show_form(
+                step_id="add_season", data_schema=self._add_schema(values), errors=errors
+            )
+        today = date.today()
+        defaults = {"start_month": today.month, "start_day": 1, "end_month": today.month, "end_day": 1}
+        return self.async_show_form(step_id="add_season", data_schema=self._add_schema(defaults))
+
+    # ── Edit / remove ────────────────────────────────────────────────────────
+
+    def _edit_schema(self, values: dict) -> vol.Schema:
+        fields = self._range_fields(values)
+        fields[vol.Required(SEASON_FIELD_INTERVAL, default=int(values["interval"]))] = self._interval_selector()
+        if self._season_fert_enabled():
+            fields[vol.Required(SEASON_FIELD_FERT_INTERVAL, default=int(values["fert_interval"]))] = (
+                self._interval_selector()
+            )
+            fields[vol.Required(SEASON_FIELD_PAUSE, default=bool(values.get("pause", False)))] = (
+                selector.selector({"boolean": {}})
+            )
+        fields[vol.Optional(CONF_REMOVE_SEASON, default=False)] = selector.selector({"boolean": {}})
+        return vol.Schema(fields)
+
+    def _season_values(self, season: dict) -> dict:
+        base = self._working_base or {}
+        try:
+            sm, sd = parse_md(season.get(SEASON_START))
+            em, ed = parse_md(season.get(SEASON_END))
+        except (TypeError, ValueError, AttributeError):
+            sm, sd, em, ed = 1, 1, 1, 1
+        return {
+            "name": season.get(SEASON_NAME, ""),
+            "start_month": sm, "start_day": sd, "end_month": em, "end_day": ed,
+            "interval": period_water(season, base),
+            "fert_interval": period_fert(season, base) or DEFAULT_FERTILIZATION_INTERVAL,
+            "pause": bool(season.get(SEASON_PAUSE_FERT, False)),
+        }
+
+    async def async_step_edit_season(self, user_input: dict | None = None) -> FlowResult:
+        seasons = self._working_seasons or []
+        base = self._working_base or {}
+        idx = self._season_editing_idx
+        if idx >= len(seasons):
+            return self._show_seasons_menu()
+        current = seasons[idx]
+        fert = self._season_fert_enabled()
+        placeholders = {"season": _season_label(current, base, fert)}
+        if user_input is not None:
+            if user_input.get(CONF_REMOVE_SEASON):
+                del seasons[idx]
+                self._working_seasons = seasons
+                return self._show_seasons_menu()
+            errors: dict[str, str] = {}
+            values, start, end = self._parse_range(user_input, idx, errors)
+            values["interval"] = int(user_input.get(SEASON_FIELD_INTERVAL, period_water(current, base)))
+            values["fert_interval"] = int(user_input.get(
+                SEASON_FIELD_FERT_INTERVAL, period_fert(current, base) or DEFAULT_FERTILIZATION_INTERVAL))
+            # Fields hidden while fertilization is off keep their stored values.
+            values["pause"] = bool(user_input.get(SEASON_FIELD_PAUSE, current.get(SEASON_PAUSE_FERT, False)))
+            self._check_sync(values["interval"], SEASON_FIELD_INTERVAL, errors)
+            if not errors:
+                updated = dict(current)
+                updated.update({
+                    SEASON_NAME: values["name"], SEASON_START: start, SEASON_END: end,
+                    SEASON_INTERVAL: values["interval"], SEASON_PAUSE_FERT: values["pause"],
+                })
+                if fert:
+                    updated[SEASON_FERT_INTERVAL] = values["fert_interval"]
+                seasons[idx] = updated
+                self._working_seasons = _season_sort(seasons)
+                return self._show_seasons_menu()
+            return self.async_show_form(
+                step_id="edit_season", data_schema=self._edit_schema(values),
+                errors=errors, description_placeholders=placeholders,
+            )
+        return self.async_show_form(
+            step_id="edit_season", data_schema=self._edit_schema(self._season_values(current)),
+            description_placeholders=placeholders,
+        )
+
+    # Pre-wire MAX_SEASONS edit slots (same pattern as the linked-sensor
+    # manager): the menu only exposes rows for seasons that exist, and HA
+    # resolves menu choices to async_step_<key> methods by name.
+    def _make_season_edit_step(idx):
+        async def _step(self, user_input: dict | None = None) -> FlowResult:
+            self._season_editing_idx = idx
+            return await self.async_step_edit_season(user_input)
+        return _step
+
+    for _slot in range(MAX_SEASONS):
+        locals()[f"async_step_edit_season_{_slot}"] = _make_season_edit_step(_slot)
+    del _make_season_edit_step, _slot
+
+    # ── Base schedule ────────────────────────────────────────────────────────
+
+    async def async_step_edit_base(self, user_input: dict | None = None) -> FlowResult:
+        base = self._working_base or {}
+        fert = self._season_fert_enabled()
+        if user_input is not None:
+            new_base = dict(base)
+            new_base[SEASON_INTERVAL] = int(user_input.get(BASE_FIELD_INTERVAL, period_water(None, base)))
+            if fert and BASE_FIELD_FERT_INTERVAL in user_input:
+                new_base[SEASON_FERT_INTERVAL] = int(user_input[BASE_FIELD_FERT_INTERVAL])
+            self._working_base = new_base
+            return self._show_seasons_menu()
+        fields: dict = {
+            vol.Required(BASE_FIELD_INTERVAL, default=period_water(None, base)): self._interval_selector(),
+        }
+        if fert:
+            fields[vol.Required(
+                BASE_FIELD_FERT_INTERVAL,
+                default=period_fert(None, base) or DEFAULT_FERTILIZATION_INTERVAL,
+            )] = self._interval_selector()
+        return self.async_show_form(step_id="edit_base", data_schema=vol.Schema(fields))
+
+    # ── Save / discard ───────────────────────────────────────────────────────
+
+    async def async_step_seasons_done(self, user_input: dict | None = None) -> FlowResult:
+        seasons = self._working_seasons or []
+        error = None
+        if len(seasons) < MIN_SEASONS:
+            error = "seasons_too_few"
+        elif self._season_fert_enabled() and pauses_whole_year(seasons):
+            error = "seasons_all_paused"
+        if error:
+            # Menus can't show errors, so show a field-less form; submitting it
+            # returns to the manager with the working copy intact.
+            return self.async_show_form(
+                step_id="seasons_invalid", data_schema=vol.Schema({}), errors={"base": error}
+            )
+        table = [dict(s) for s in seasons]
+        base = dict(self._working_base or {})
+        self._working_seasons = None
+        self._working_base = None
+        return await self._season_commit(table, base)
+
+    async def async_step_seasons_invalid(self, user_input: dict | None = None) -> FlowResult:
+        return self._show_seasons_menu()
+
+    async def async_step_seasons_discard(self, user_input: dict | None = None) -> FlowResult:
+        self._working_seasons = None
+        self._working_base = None
+        return await self._season_discard()
+
+
+class AdaptivePlantConfigFlow(_SeasonManagerMixin, ConfigFlow, domain=DOMAIN):
     """Handle the initial setup of an Adaptive Plant config entry."""
 
     VERSION = 1
@@ -312,6 +752,15 @@ class AdaptivePlantConfigFlow(ConfigFlow, domain=DOMAIN):
         self._dup_source: ConfigEntry | None = None
         self._dup_options: dict = {}
         self._dup_dates: dict = {}
+        # Seasonal schedule (Experimental): set by the features toggle; the
+        # manager then runs once, at the end of setup, before the entry is
+        # created. A saved table is staged in _new_options (it lives in
+        # entry.options only, like care instructions).
+        self._wizard_seasons: bool = False
+        self._new_options: dict = {}
+        self._working_seasons: list[dict] | None = None
+        self._working_base: dict | None = None
+        self._season_editing_idx: int = 0
 
     async def async_step_user(self, user_input: dict | None = None) -> FlowResult:
         # Offer the duplicate path only when there's an existing plant to copy;
@@ -428,6 +877,14 @@ class AdaptivePlantConfigFlow(ConfigFlow, domain=DOMAIN):
             if src.care_instructions:
                 self._dup_options[CONF_CARE_INSTRUCTIONS] = src.care_instructions
 
+        # Seasonal schedule (Experimental) is recipe, so it is copied — the base
+        # and every season, with the intervals each has learned. Options-only,
+        # staged like care instructions. The runtime marker of the period last
+        # applied (STATE_SEASON_APPLIED) is deliberately not copied.
+        if src.seasons_active:
+            self._dup_options[CONF_SEASONS] = [dict(s) for s in valid_seasons(src.seasons)]
+            self._dup_options[CONF_SEASON_BASE] = dict(src.season_base)
+
         # Captured for the "Mirror parent plant" date option.
         self._dup_dates = {
             "watered": (src.last_watered, src.next_watering),
@@ -437,6 +894,8 @@ class AdaptivePlantConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def async_step_features(self, user_input: dict | None = None) -> FlowResult:
         if user_input is not None:
+            user_input = dict(user_input)
+            self._wizard_seasons = bool(user_input.pop(CONF_ENABLE_SEASONS, False))
             for k, v in user_input.items():
                 if v not in (None, ""):
                     self._data[k] = v
@@ -658,11 +1117,46 @@ class AdaptivePlantConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(step_id="moisture", data_schema=_moisture_schema(self._data), errors=errors)
 
     def _create_entry(self) -> FlowResult:
-        if self._duplicating and self._dup_options:
+        # Every wizard path ends here. If seasons were switched on in the
+        # features step, run the season manager first (once); its Save and
+        # Discard both finish via _finish_entry.
+        if self._wizard_seasons:
+            self._wizard_seasons = False
+            return self._season_start_manager()
+        return self._finish_entry()
+
+    def _finish_entry(self) -> FlowResult:
+        # _dup_options is only filled when duplicating; _new_options only when
+        # seasons were saved in this wizard.
+        options = {**self._dup_options, **self._new_options}
+        if options:
             return self.async_create_entry(
-                title=self._data[CONF_PLANT_NAME], data=self._data, options=self._dup_options
+                title=self._data[CONF_PLANT_NAME], data=self._data, options=options
             )
         return self.async_create_entry(title=self._data[CONF_PLANT_NAME], data=self._data)
+
+    # ── Season manager hooks (setup wizard) ──────────────────────────────────
+
+    def _season_fert_enabled(self) -> bool:
+        return bool(self._data.get(CONF_ENABLE_FERTILIZATION))
+
+    def _season_sync_window(self) -> int:
+        return int(self._data.get(OPT_FERT_SYNC_WINDOW, DEFAULT_FERT_SYNC_WINDOW) or 0)
+
+    def _season_initial(self) -> tuple[list[dict], dict]:
+        # The base schedule is the plant's intervals as entered in this wizard.
+        return [], {
+            SEASON_INTERVAL: int(self._data.get(OPT_WATERING_INTERVAL, DEFAULT_WATERING_INTERVAL)),
+            SEASON_FERT_INTERVAL: int(self._data.get(OPT_FERTILIZATION_INTERVAL, DEFAULT_FERTILIZATION_INTERVAL)),
+        }
+
+    async def _season_commit(self, table: list[dict], base: dict) -> FlowResult:
+        self._new_options[CONF_SEASONS] = table
+        self._new_options[CONF_SEASON_BASE] = base
+        return self._finish_entry()
+
+    async def _season_discard(self) -> FlowResult:
+        return self._finish_entry()
 
     @staticmethod
     @callback
@@ -670,7 +1164,7 @@ class AdaptivePlantConfigFlow(ConfigFlow, domain=DOMAIN):
         return AdaptivePlantOptionsFlow(config_entry)
 
 
-class AdaptivePlantOptionsFlow(OptionsFlow):
+class AdaptivePlantOptionsFlow(_SeasonManagerMixin, OptionsFlow):
     """Allow editing mutable settings after the entry is created."""
 
     def __init__(self, config_entry: ConfigEntry) -> None:
@@ -697,6 +1191,15 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
         # entry, committed on Done) and the index of the sensor being edited.
         self._working_sensors: list[dict] | None = None
         self._editing_idx: int = 0
+        # Seasonal schedule (Experimental): manager working copy and edit
+        # index (see _SeasonManagerMixin), plus the settings-toggle flags —
+        # first enable runs the manager, switching off runs the keep-which-
+        # interval picker. Both are routed by _route_first_enable.
+        self._working_seasons: list[dict] | None = None
+        self._working_base: dict | None = None
+        self._season_editing_idx: int = 0
+        self._pending_seasons_first: bool = False
+        self._pending_seasons_off: bool = False
         # True when the user submitted a blank or "null" label in step 1 —
         # carried so the moisture-options step can remove the stored label.
         self._pending_clear_label: bool = False
@@ -704,16 +1207,19 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
     async def async_step_init(self, user_input: dict | None = None) -> FlowResult:
         """Options entry point.
 
-        With no linked sensors, delegate straight to the settings form — no menu,
-        no extra click. Once the plant has one or more linked sensors, front a
-        menu so the settings form and the linked-sensors manager are separate.
+        With no linked sensors and no seasonal schedule, delegate straight to
+        the settings form — no menu, no extra click. Once the plant has linked
+        sensors and/or seasons, front a menu so the settings form and each
+        manager are separate.
         """
+        menu = ["settings"]
         cs = self._config_entry.options.get(CONF_CUSTOM_SENSORS)
         if isinstance(cs, list) and cs:
-            return self.async_show_menu(
-                step_id="init",
-                menu_options=["settings", "linked_sensors"],
-            )
+            menu.append("linked_sensors")
+        if valid_seasons(self._config_entry.options.get(CONF_SEASONS)):
+            menu.append("seasons")
+        if len(menu) > 1:
+            return self.async_show_menu(step_id="init", menu_options=menu)
         return await self.async_step_settings(user_input)
 
     async def async_step_settings(self, user_input: dict | None = None) -> FlowResult:
@@ -751,6 +1257,18 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
             self._pending_custom_first = _custom_on and not _has_custom
             if _has_custom and not _custom_on:
                 self._flow_removed_keys.add(CONF_CUSTOM_SENSORS)
+
+            # Seasonal schedule master toggle (Experimental; transient, same
+            # pattern as linked sensors). ON with no seasons -> the manager runs
+            # after this form; OFF with seasons -> the keep-which-interval picker
+            # runs, then the table is deleted. Both routed by _route_first_enable.
+            cleaned.pop(CONF_ENABLE_SEASONS, None)
+            _seasons_stored = valid_seasons(current_opts.get(CONF_SEASONS))
+            _base_stored = current_opts.get(CONF_SEASON_BASE)
+            _has_seasons = bool(_seasons_stored) and valid_base(_base_stored)
+            _seasons_on = bool(user_input.get(CONF_ENABLE_SEASONS, False))
+            self._pending_seasons_first = _seasons_on and not _has_seasons
+            self._pending_seasons_off = _has_seasons and not _seasons_on
 
             # Normalise label: drop from `cleaned` unconditionally, then re-add
             # the stripped value only if the user didn't intend to clear it.
@@ -918,6 +1436,29 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
                 new_next = next_due(current_opts.get(STATE_LAST_FERTILIZED), new_fert_interval)
                 if new_next:
                     cleaned[STATE_NEXT_FERTILIZED] = new_next
+
+            # Seasonal schedule: an interval edited here belongs to the period
+            # in effect today (the base or a season). Write it back, or the
+            # season check that runs after the save would see a mismatch and
+            # revert it. Not when seasons are being switched off (the picker
+            # decides) — and applies to moisture plants too.
+            if _has_seasons and _seasons_on:
+                water_changed = (
+                    new_water_interval is not None and old_water_interval is not None
+                    and new_water_interval != old_water_interval
+                )
+                fert_changed = (
+                    new_fert_interval is not None and old_fert_interval is not None
+                    and new_fert_interval != old_fert_interval
+                )
+                if water_changed or fert_changed:
+                    table, base = write_back(
+                        _seasons_stored, _base_stored, date.today(),
+                        water=new_water_interval if water_changed else None,
+                        fert=new_fert_interval if fert_changed else None,
+                    )
+                    cleaned[CONF_SEASONS] = table
+                    cleaned[CONF_SEASON_BASE] = base
 
             if moisture_raw:
                 self._pending_moisture_sensor = moisture_raw
@@ -1087,6 +1628,14 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
         }
 
         # ── Toggles — grouped together at the bottom ─────────────────────────
+        # Seasonal schedule (Experimental) — first, as it governs the watering
+        # interval above. Default reflects whether any seasons exist.
+        schema_fields[vol.Required(
+            CONF_ENABLE_SEASONS,
+            default=bool(valid_seasons(current_opts.get(CONF_SEASONS)))
+            and valid_base(current_opts.get(CONF_SEASON_BASE)),
+        )] = selector.selector({"boolean": {}})
+
         # Notes toggle — always shown, options override takes priority over entry.data
         notes_currently_enabled = bool(
             current_opts.get(CONF_NOTES_ENABLED, entry.data.get(CONF_ENABLE_NOTES, False))
@@ -1317,7 +1866,8 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
     async def _route_first_enable(self) -> FlowResult:
         """Route to the next pending first-enable sub-step, or save.
 
-        Ordered image → latin → linked-sensor → fertilization → repotting. The image/latin steps
+        Ordered image → latin → linked-sensor → seasons → fertilization →
+        repotting. The image/latin steps
         clear their own flag and call back here; the fertilization/repotting
         steps retain their existing chain (_after_fertilized_init → repot →
         save), so this dispatcher only fronts the chain and leaves that logic
@@ -1329,11 +1879,148 @@ class AdaptivePlantOptionsFlow(OptionsFlow):
             return await self.async_step_latin_init()
         if self._pending_custom_first:
             return await self.async_step_add_sensor()
+        if self._pending_seasons_first:
+            return self._season_start_manager()
+        if self._pending_seasons_off:
+            return await self.async_step_seasons_off()
         if self._pending_fert_first:
             return await self.async_step_fertilized_init()
         if self._pending_repot_first:
             return await self.async_step_repotted_init()
         return self._save()
+
+    # ── Season manager hooks (Configure) ──────────────────────────────────────
+
+    def _season_fert_enabled(self) -> bool:
+        # The settings form always writes the fertilization toggle into
+        # _pending_opts; entered from the init menu, fall back to the entry.
+        if CONF_FERTILIZATION_ENABLED in self._pending_opts:
+            return bool(self._pending_opts[CONF_FERTILIZATION_ENABLED])
+        entry = self._config_entry
+        return bool(entry.options.get(
+            CONF_FERTILIZATION_ENABLED, entry.data.get(CONF_ENABLE_FERTILIZATION, False)
+        ))
+
+    def _season_setting(self, key: str, default):
+        """A setting as this save will leave it: pending edit, else options, else data."""
+        entry = self._config_entry
+        if key in self._pending_opts:
+            return self._pending_opts[key]
+        return entry.options.get(key, entry.data.get(key, default))
+
+    def _season_sync_window(self) -> int:
+        return int(self._season_setting(OPT_FERT_SYNC_WINDOW, DEFAULT_FERT_SYNC_WINDOW) or 0)
+
+    def _season_initial(self) -> tuple[list[dict], dict]:
+        """The stored seasons and base. With none stored (first enable), the base
+        is the plant's current intervals, including any edited in this save."""
+        opts = self._config_entry.options
+        table = _season_sort([dict(s) for s in valid_seasons(opts.get(CONF_SEASONS))])
+        stored = opts.get(CONF_SEASON_BASE)
+        if table and valid_base(stored):
+            return table, dict(stored)
+        return table, {
+            SEASON_INTERVAL: int(self._season_setting(OPT_WATERING_INTERVAL, DEFAULT_WATERING_INTERVAL)),
+            SEASON_FERT_INTERVAL: int(self._season_setting(OPT_FERTILIZATION_INTERVAL, DEFAULT_FERTILIZATION_INTERVAL)),
+        }
+
+    def _season_rebase_fert(self, table: list, interval: int) -> None:
+        """Fresh next-fertilization date when the paused days changed or seasons
+        went off: an old resume date may no longer apply. An explicit edit, so a
+        fresh reschedule, like an interval edit. Skipped with no last date."""
+        last = self._season_setting(STATE_LAST_FERTILIZED, None)
+        new_next = rebase_fert(last, interval, table, date.today())
+        if new_next:
+            self._pending_opts[STATE_NEXT_FERTILIZED] = new_next
+
+    async def _season_commit(self, table: list[dict], base: dict) -> FlowResult:
+        """Stage the saved seasons and base; the update listener applies them
+        (interval swaps, reschedules, pauses) right after _save()."""
+        old = self._config_entry.options.get(CONF_SEASONS)
+        self._pending_opts[CONF_SEASONS] = table
+        self._pending_opts[CONF_SEASON_BASE] = base
+        self._flow_removed_keys.discard(CONF_SEASONS)
+        self._flow_removed_keys.discard(CONF_SEASON_BASE)
+        if (
+            self._season_fert_enabled()
+            and (_has_pause(old) or _has_pause(table))
+            and _pause_signature(old) != _pause_signature(table)
+        ):
+            fert = period_fert(active_season(table, date.today()), base)
+            if fert is not None:
+                self._season_rebase_fert(table, fert)
+        self._pending_seasons_first = False
+        return await self._route_first_enable()
+
+    async def _season_discard(self) -> FlowResult:
+        # First enable: seasons stay off, the rest of the settings still save.
+        # From the init menu: nothing pending, so the save changes nothing.
+        self._pending_seasons_first = False
+        return await self._route_first_enable()
+
+    async def async_step_seasons_off(self, user_input: dict | None = None) -> FlowResult:
+        """Turning seasons off: pick the schedule to keep (the base or any
+        season), then every season and the base are deleted (the step's text
+        warns about this)."""
+        entry = self._config_entry
+        table, base = self._season_initial()
+        today = date.today()
+        current = active_season(table, today)
+        fert = self._season_fert_enabled()
+
+        if user_input is not None:
+            choice = str(user_input.get(CONF_SEASON_OFF_CHOICE, SEASON_FROM_BASE))
+            chosen = None
+            if choice != SEASON_FROM_BASE:
+                try:
+                    chosen = table[int(choice)]
+                except (ValueError, IndexError):
+                    chosen = current
+            plant = PlantData(self.hass, entry)
+            water = period_water(chosen, base)
+            fert_interval = period_fert(chosen, base)
+
+            # The picker owns the intervals and dates: drop anything the
+            # settings form staged for intervals typed in the same save.
+            for key in (STATE_NEXT_WATERING, STATE_NEXT_FERTILIZED, OPT_FERTILIZATION_INTERVAL):
+                self._pending_opts.pop(key, None)
+            self._pending_opts[OPT_WATERING_INTERVAL] = water
+            for key in (CONF_SEASONS, CONF_SEASON_BASE, STATE_SEASON_APPLIED):
+                self._pending_opts.pop(key, None)
+                self._flow_removed_keys.add(key)
+            if water != plant.watering_interval:
+                # Same handling as a change of season: keep last watered, fit it
+                # to the kept interval (never earlier than today), and reset the
+                # adaptive counters that measured the old interval. Moisture
+                # plants keep their sensor-owned date.
+                if not self._season_setting(CONF_MOISTURE_SENSOR, None):
+                    new_next = flip_next(plant.last_watered, water, today)
+                    if new_next:
+                        self._pending_opts[STATE_NEXT_WATERING] = new_next
+                self._pending_opts[STATE_EARLY_WATERING_COUNT] = 0
+                self._pending_opts[STATE_SNOOZE_COUNT] = 0
+                self._pending_opts[STATE_SNOOZED_THIS_PERIOD] = False
+            if fert_interval is not None:
+                self._pending_opts[OPT_FERTILIZATION_INTERVAL] = fert_interval
+                if fert and (_has_pause(table) or fert_interval != plant.fertilization_interval):
+                    self._season_rebase_fert([], fert_interval)
+            self._pending_seasons_off = False
+            return await self._route_first_enable()
+
+        options = [{"value": SEASON_FROM_BASE,
+                    "label": _base_label(base, fert) + (" (current)" if current is None else "")}]
+        for i, season in enumerate(table):
+            label = _season_label(season, base, fert)
+            if season is current:
+                label += " (current)"
+            options.append({"value": str(i), "label": label})
+        default = str(table.index(current)) if current in table else SEASON_FROM_BASE
+        schema = vol.Schema({
+            vol.Required(CONF_SEASON_OFF_CHOICE, default=default): selector.selector(
+                {"select": {"mode": "list", "options": options}}
+            ),
+        })
+        return self.async_show_form(step_id="seasons_off", data_schema=schema)
 
     async def async_step_linked_sensors(self, user_input: dict | None = None) -> FlowResult:
         """Top menu for a plant's linked display sensors: add (until the cap),
