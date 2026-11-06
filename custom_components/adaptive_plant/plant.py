@@ -863,26 +863,31 @@ class PlantData:
         if await self.apply_seasons():
             persisted = True
 
-        # For moisture sensor plants, check current soil moisture before
-        # flagging as due. If moisture is above the dry threshold the plant
-        # doesn't need watering yet — silently push the date by 1 day without
-        # touching the snooze counter or adaptive logic.
+        # For moisture sensor plants, check current soil moisture before a
+        # watering comes due. If the plant is due today or overdue but the soil
+        # is above the dry threshold, it doesn't need watering yet — push the
+        # date to tomorrow without touching the snooze counter or adaptive
+        # logic. A date still in the future is left alone so it counts down
+        # normally; previously every moist night added a day to it, freezing
+        # the countdown. Same rule as startup_moisture_check and the mid-band
+        # branch of handle_moisture_change. A malformed date counts as due, so
+        # it is repaired to tomorrow.
         if self.moisture_sensor and self.dry_threshold is not None:
-            state = self._hass.states.get(self.moisture_sensor)
+            nw = self.next_watering
+            due = False
+            if nw:
+                try:
+                    due = date.fromisoformat(nw) <= today
+                except ValueError:
+                    due = True
+            state = self._hass.states.get(self.moisture_sensor) if due else None
             if state and state.state not in ("unknown", "unavailable"):
                 try:
                     moisture = float(state.state)
                     if moisture > self.dry_threshold:
-                        nw = self.next_watering
-                        if nw:
-                            try:
-                                new_next = (date.fromisoformat(nw) + timedelta(days=1)).isoformat()
-                            except ValueError:
-                                new_next = (today + timedelta(days=1)).isoformat()
-                        else:
-                            new_next = (today + timedelta(days=1)).isoformat()
+                        new_next = (today + timedelta(days=1)).isoformat()
                         _LOGGER.debug(
-                            "%s: moisture above dry threshold at rollover — pushing next watering to %s",
+                            "%s: due but moisture above dry threshold at rollover — pushing next watering to %s",
                             self.plant_name, new_next,
                         )
                         await self._persist({STATE_NEXT_WATERING: new_next})
