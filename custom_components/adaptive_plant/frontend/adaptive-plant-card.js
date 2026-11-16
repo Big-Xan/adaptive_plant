@@ -304,10 +304,12 @@ class AdaptivePlantCard extends HTMLElement {
   _renderIcon(value, color, size) {
     size = size || '18px';
     if (!value) return '';
+    // Icons and colors come from the card config and from linked sensors set
+    // in Configure. Escape both so a stray quote or < can't break the markup.
     if (value.indexOf(':') !== -1) {
-      return '<ha-icon icon="' + value + '" style="--mdc-icon-size:' + size + ';color:' + color + ';display:inline-flex;align-items:center;"></ha-icon>';
+      return '<ha-icon icon="' + this._esc(value) + '" style="--mdc-icon-size:' + size + ';color:' + this._esc(color) + ';display:inline-flex;align-items:center;"></ha-icon>';
     }
-    return '<span class="emoji-icon">' + value + '</span>';
+    return '<span class="emoji-icon">' + this._esc(value) + '</span>';
   }
 
   // ── Linked-sensor rows for the Overview expanded detail (after health/repot) ──
