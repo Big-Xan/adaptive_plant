@@ -2327,10 +2327,7 @@ class AdaptivePlantOptionsFlow(_SeasonManagerMixin, OptionsFlow):
                 else:  # yesterday
                     last = today - timedelta(days=1)
                 interval = int(
-                    self._pending_opts.get(
-                        OPT_FERTILIZATION_INTERVAL,
-                        self._config_entry.options.get(OPT_FERTILIZATION_INTERVAL, DEFAULT_FERTILIZATION_INTERVAL),
-                    )
+                    self._season_setting(OPT_FERTILIZATION_INTERVAL, DEFAULT_FERTILIZATION_INTERVAL)
                 )
                 self._pending_opts[STATE_LAST_FERTILIZED] = last.isoformat()
                 self._pending_opts[STATE_NEXT_FERTILIZED] = (last + timedelta(days=interval)).isoformat()
@@ -2361,10 +2358,7 @@ class AdaptivePlantOptionsFlow(_SeasonManagerMixin, OptionsFlow):
                 errors["custom_fertilized_date"] = "invalid_date"
             else:
                 interval = int(
-                    self._pending_opts.get(
-                        OPT_FERTILIZATION_INTERVAL,
-                        self._config_entry.options.get(OPT_FERTILIZATION_INTERVAL, DEFAULT_FERTILIZATION_INTERVAL),
-                    )
+                    self._season_setting(OPT_FERTILIZATION_INTERVAL, DEFAULT_FERTILIZATION_INTERVAL)
                 )
                 self._pending_opts[STATE_LAST_FERTILIZED] = last.isoformat()
                 self._pending_opts[STATE_NEXT_FERTILIZED] = (last + timedelta(days=interval)).isoformat()
