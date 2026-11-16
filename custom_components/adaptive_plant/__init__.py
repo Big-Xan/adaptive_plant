@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import logging
 import shutil
-from datetime import date
 from pathlib import Path
 
 from homeassistant.config_entries import ConfigEntry
@@ -32,13 +31,25 @@ from .const import (
     STATE_NEXT_FERTILIZED,
     STATE_NEXT_WATERING,
 )
-from .plant import PlantData
+from .plant import PlantData, local_today
+from .sensor import moisture_entity_wanted
 
 _LOGGER = logging.getLogger(__name__)
 
 _CARD_URL = f"/{DOMAIN}/adaptive-plant-card.js"
 _CARD_PATH = Path(__file__).parent / "frontend" / "adaptive-plant-card.js"
 _BLUEPRINTS_SRC = Path(__file__).parent / "blueprints" / "automation"
+
+
+def _entity_features(hass: HomeAssistant, entry: ConfigEntry, plant: PlantData) -> dict[str, bool]:
+    """Features whose entities are only created when the platforms set up."""
+    return {
+        "fertilization": plant.enable_fertilization,
+        "notes": plant.enable_notes,
+        "latin_name": plant.enable_latin_name,
+        "repotting": plant.enable_repotting,
+        "moisture": moisture_entity_wanted(hass, entry, plant),
+    }
 
 
 async def _async_register_frontend(hass: HomeAssistant) -> None:
@@ -99,8 +110,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # ── Blueprints (copy with mtime guard, executor) ─────────────────────────
     if not hass.data.get(f"{DOMAIN}_blueprints_copied"):
-        await hass.async_add_executor_job(_copy_blueprints, hass.config.config_dir)
-        hass.data[f"{DOMAIN}_blueprints_copied"] = True
+        # A disk error here (read-only or full config folder) must not stop the
+        # plant from loading: the blueprint is optional. Not marked as copied,
+        # so the next plant setup tries again.
+        try:
+            await hass.async_add_executor_job(_copy_blueprints, hass.config.config_dir)
+        except OSError as err:
+            _LOGGER.warning("Could not copy the Adaptive Plant blueprint: %s", err)
+        else:
+            hass.data[f"{DOMAIN}_blueprints_copied"] = True
 
     # ── Seed initial state from setup wizard on first load ───────────────────
     initial_options: dict = dict(entry.options)
@@ -132,7 +150,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         seeded = True
 
     if STATE_HEALTH_LAST_UPDATED not in initial_options:
-        initial_options[STATE_HEALTH_LAST_UPDATED] = date.today().isoformat()
+        initial_options[STATE_HEALTH_LAST_UPDATED] = local_today().isoformat()
         seeded = True
 
     current_health = initial_options.get(STATE_HEALTH)
@@ -146,6 +164,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     plant = PlantData(hass, entry)
     hass.data[DOMAIN][entry.entry_id] = plant
 
+    # Seasonal schedule (Experimental): bring the plant in line with the season
+    # active today before the entities come up. Covers startup, Reload, a new
+    # plant created with seasons, and HA having been off across a boundary.
+    await plant.apply_seasons()
+
     # The wizard's area choice is applied ONCE, when the device is first
     # created (suggested-area semantics). Capture existence before platform
     # setup: the device registry is persistent, so a device found here means
@@ -153,6 +176,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # assignment (including a deliberately cleared one) must be respected —
     # re-applying entry.data's snapshot on every load reverts area changes
     # made on the device page.
+    # Which optional entities this setup creates. Turning one of these features
+    # on later needs a reload to create its entities (see the options listener).
+    created_features = _entity_features(hass, entry, plant)
+
     dev_reg = dr.async_get(hass)
     device_preexisting = bool(
         dr.async_entries_for_config_entry(dev_reg, entry.entry_id)
@@ -211,7 +238,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # ── Options update listener ──────────────────────────────────────────────
     async def _handle_options_update(hass: HomeAssistant, entry: ConfigEntry) -> None:
+        # A feature switched on after setup (fertilization, notes, latin name,
+        # repotting, or a moisture sensor linked to a plant without a Soil
+        # moisture entity) has no entities yet: reload once to create them.
+        # Only these changes reload. Watering, notes text and every other
+        # runtime write also land here, but never switch a feature on.
+        wanted = _entity_features(hass, entry, plant)
+        if any(on and not created_features[key] for key, on in wanted.items()):
+            _LOGGER.debug("%s: feature enabled — reloading to create its entities", plant.plant_name)
+            hass.config_entries.async_schedule_reload(entry.entry_id)
+            return
         _register_moisture_listener()
+        # Apply a season table saved in Configure (or an active season's
+        # interval edited there) right away. Idempotent: on any other options
+        # write it finds nothing to change, so it never loops.
+        await plant.apply_seasons()
         plant._notify_listeners()
 
     entry.async_on_unload(entry.add_update_listener(_handle_options_update))

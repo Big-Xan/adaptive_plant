@@ -1,4 +1,4 @@
-// Adaptive Plant Card v19.9
+// Adaptive Plant Card v20.1
 
 class AdaptivePlantCard extends HTMLElement {
   constructor() {
@@ -15,6 +15,8 @@ class AdaptivePlantCard extends HTMLElement {
     this._repottedEditing = false;
     this._plantEntityIds = null;   // cached list of adaptive_plant entity ids (perf)
     this._linkedSourceIds = [];    // linked-sensor source entity ids watched on Overview
+    this._pending        = {};     // task presses awaiting the server (see _pressTask)
+    this._lastRenderKey  = null;   // last HTML written, to skip identical rebuilds
   }
 
   static getConfigElement() { return document.createElement('adaptive-plant-card-editor'); }
@@ -123,6 +125,8 @@ class AdaptivePlantCard extends HTMLElement {
         sick:      hc.sick      || '#e05c5c',
       },
     };
+
+    this._lastRenderKey = null;   // new config: always repaint on the next render
 
     if (!this._tab) {
       if      (this._showToday)    this._tab = 'today';
@@ -300,10 +304,28 @@ class AdaptivePlantCard extends HTMLElement {
   _renderIcon(value, color, size) {
     size = size || '18px';
     if (!value) return '';
+    // Icons and colors come from the card config and from linked sensors set
+    // in Configure. Escape both so a stray quote or < can't break the markup.
     if (value.indexOf(':') !== -1) {
-      return '<ha-icon icon="' + value + '" style="--mdc-icon-size:' + size + ';color:' + color + ';display:inline-flex;align-items:center;"></ha-icon>';
+      return '<ha-icon icon="' + this._esc(value) + '" style="--mdc-icon-size:' + size + ';color:' + this._esc(color) + ';display:inline-flex;align-items:center;"></ha-icon>';
     }
-    return '<span class="emoji-icon">' + value + '</span>';
+    return '<span class="emoji-icon">' + this._esc(value) + '</span>';
+  }
+
+  // ── Linked-sensor display name: the sensor's friendly name without its
+  //    device's name in front ("Bedroom Thermometer Humidity" -> "Humidity"),
+  //    as Home Assistant's own entity rows show it. Falls back to the full
+  //    friendly name, then the entity id. ──
+  _linkedName(hass, entityId, friendly) {
+    var name = friendly || entityId;
+    var ent  = hass.entities && hass.entities[entityId];
+    var dev  = ent && ent.device_id && hass.devices && hass.devices[ent.device_id];
+    var dn   = dev && (dev.name_by_user || dev.name);
+    if (dn && typeof name === 'string' && name.toLowerCase().indexOf(dn.toLowerCase() + ' ') === 0) {
+      var rest = name.slice(dn.length + 1).trim();
+      if (rest) return rest;
+    }
+    return name;
   }
 
   // ── Linked-sensor rows for the Overview expanded detail (after health/repot) ──
@@ -317,7 +339,7 @@ class AdaptivePlantCard extends HTMLElement {
       var iconHtml = cs.icon ? self._renderIcon(cs.icon, color, '16px') + ' ' : '';
       var valTxt   = self._esc(String(cs.value)) + (cs.unit ? ' ' + self._esc(cs.unit) : '');
       return '<div class="detail-row custom-sensor-row">' +
-        '<span class="detail-label">' + iconHtml + self._esc(cs.name) + '</span>' +
+        '<span class="detail-label">' + iconHtml + '<span class="cs-name">' + self._esc(cs.name) + '</span></span>' +
         '<span class="detail-value">' + valTxt + '</span>' +
         '</div>';
     }).join('');
@@ -357,7 +379,7 @@ class AdaptivePlantCard extends HTMLElement {
       ' data-repotted-entity="' + p.repottedDateInputId + '"' +
       ' data-repotted-btn="' + p.btnRepotted + '"' +
       ' data-plant-id="' + p.id + '">' +
-      icon + 'Mark Repotted' +
+      icon + this._btnLabel('Mark Repotted', 'Repotted') +
     '</button>';
   }
 
@@ -394,6 +416,7 @@ class AdaptivePlantCard extends HTMLElement {
       this._showOverview && '<button class="tab ' + (this._tab === 'overview' ? 'active' : '') + '" data-tab="overview">Overview</button>',
     ].filter(Boolean).join('');
 
+    this._lastRenderKey = null;
     this.shadowRoot.innerHTML =
       '<style>' + this._css(height, width) + '</style>' +
       '<ha-card>' +
@@ -439,32 +462,47 @@ class AdaptivePlantCard extends HTMLElement {
       // Show the hold bar only when it would actually press something —
       // same predicate the hold completion uses in _attachHold.
       var actionable = plants.some(function(p) {
-        return (self._isUrgent(p.daysWater) && p.btnWater) || (self._isUrgent(p.daysFert) && p.btnFert);
+        return (self._waterDue(p) && p.btnWater) || (self._fertDue(p) && p.btnFert);
       });
       var holdHtml      = (this._showHoldButton && actionable) ? this._renderHoldBar() : '';
-      var hasActive     = plants.some(function(p) { return self._isUrgent(p.daysWater) || self._isUrgent(p.daysFert); });
+      var hasActive     = plants.some(function(p) { return self._waterDue(p) || self._fertDue(p); });
       var completedHtml = this._renderCompletedToday(plants, hasActive);
-      if (this._pinHoldButton && footerEl) {
-        footerEl.innerHTML     = holdHtml;
-        footerEl.style.display = holdHtml ? '' : 'none';
-        contentEl.innerHTML    = html + completedHtml;
-      } else {
-        if (footerEl) { footerEl.innerHTML = ''; footerEl.style.display = 'none'; }
-        contentEl.innerHTML = html + holdHtml + completedHtml;
-      }
+      var pinned        = !!(this._pinHoldButton && footerEl);
+      var footerHtml    = pinned ? holdHtml : '';
+      var contentHtml   = pinned ? html + completedHtml : html + holdHtml + completedHtml;
+      // One press changes several entities, each arriving as its own update.
+      // When an update doesn't change what's on screen, leave the DOM (and its
+      // listeners and icons) alone instead of rebuilding it identically.
+      if (this._skipIdentical('today', pinned, footerHtml, contentHtml)) return;
+      if (footerEl) { footerEl.innerHTML = footerHtml; footerEl.style.display = footerHtml ? '' : 'none'; }
+      contentEl.innerHTML = contentHtml;
     } else {
+      if (this._skipIdentical(this._tab, false, '', html)) return;
       if (footerEl) { footerEl.innerHTML = ''; footerEl.style.display = 'none'; }
       contentEl.innerHTML = html;
     }
 
     this._attachContentListeners(plants, contentEl);
-    if (this._tab === 'today') this._attachHold(plants);
+    if (this._tab === 'today') this._attachHold();
+  }
+
+  // True when this exact output is already on screen (then the caller skips
+  // the DOM write). Any difference (tab, footer, content) repaints.
+  _skipIdentical(tab, pinned, footerHtml, contentHtml) {
+    var key = tab + '\u0000' + (pinned ? 1 : 0) + '\u0000' + footerHtml + '\u0000' + contentHtml;
+    if (key === this._lastRenderKey) return true;
+    this._lastRenderKey = key;
+    return false;
   }
 
   _attachContentListeners(plants, root) {
     var self = this;
     root.querySelectorAll('[data-entity]').forEach(function(el) {
-      el.addEventListener('click', function(e) { e.stopPropagation(); self._press(el.dataset.entity); });
+      el.addEventListener('click', function(e) {
+        e.stopPropagation();
+        if (el.dataset.task) self._pressTask(el.dataset.entity, el.dataset.task, el.dataset.pid);
+        else                 self._press(el.dataset.entity);
+      });
     });
     root.querySelectorAll('[data-expand]').forEach(function(el) {
       el.addEventListener('click', function() {
@@ -528,14 +566,27 @@ class AdaptivePlantCard extends HTMLElement {
         e.stopPropagation();
         var input = root.querySelector('#repotted-input-' + el.dataset.plantId);
         var val   = input ? input.value.trim() : '';
-        self._setValue(el.dataset.repottedEntity, val);
-        self._press(el.dataset.repottedBtn);
+        // Press only once the date is stored, so the button never reads the
+        // old input. If storing fails, HA shows the error and nothing is pressed.
+        var stored = self._setValue(el.dataset.repottedEntity, val);
+        if (stored && typeof stored.then === 'function') {
+          stored.then(function() { self._press(el.dataset.repottedBtn); }, function() {});
+        } else {
+          self._press(el.dataset.repottedBtn);
+        }
       });
     });
   }
 
+  // Plants as the card renders them: the entity states, plus the presses
+  // still waiting on the server (see _pressTask / _applyPending).
   _plants() {
+    return this._applyPending(this._rawPlants());
+  }
+
+  _rawPlants() {
     var hass = this._hass;
+    var self = this;
     if (!hass || !hass.entities) return [];
     // Use the cached entity id list. _shouldRender keeps this fresh by
     // refreshing whenever hass.entities identity changes.
@@ -593,7 +644,7 @@ class AdaptivePlantCard extends HTMLElement {
         var srcAt = (srcSt && srcSt.attributes) ? srcSt.attributes : {};
         return {
           entityId: cs.entity_id,
-          name:     srcAt.friendly_name || cs.entity_id,
+          name:     self._linkedName(hass, cs.entity_id, srcAt.friendly_name),
           value:    avail ? srcSt.state : '\u2014',
           unit:     (avail && srcAt.unit_of_measurement) ? srcAt.unit_of_measurement : '',
           icon:     cs.icon || srcAt.icon || '',
@@ -651,6 +702,96 @@ class AdaptivePlantCard extends HTMLElement {
   _isUrgent(str)  { return str === 'Today' || (!!str && str.indexOf('Overdue') !== -1); }
   _isOverdue(str) { return !!str && str.indexOf('Overdue') !== -1; }
 
+  // ── Optimistic task presses ────────────────────────────────────────────────
+  // A water / fertilize / snooze press shows its result at once instead of
+  // waiting for the server. The press is remembered with a snapshot of the
+  // fields it will change; it's dropped as soon as the real state differs from
+  // that snapshot (the server has answered), if the service call fails, or
+  // after 8 seconds as a safety net, so a lost press can't hide a task.
+  _pendingSig(p, kind) {
+    if (kind === 'water') return p.lastWatered    + '|' + p.daysWater;
+    if (kind === 'fert')  return p.lastFertilized + '|' + p.daysFert;
+    return p.daysWater + '|' + p.daysFert;      // snooze
+  }
+
+  _pressTask(entityId, kind, pid) {
+    if (!entityId || !this._hass) return;
+    var self  = this;
+    var plant = pid ? this._rawPlants().find(function(p) { return p.id === pid; }) : null;
+    // A press that can't change what's shown (a second watering or
+    // fertilization on the same day, while not due) gets no pending entry:
+    // its snapshot would never differ, so the button would stay greyed until
+    // the 8-second timer. The press still goes to the server.
+    if (plant && !this._pressChangesSig(plant, kind)) plant = null;
+    if (plant) {
+      var token = {};
+      this._pending[entityId] = { kind: kind, pid: pid, sig: this._pendingSig(plant, kind), token: token };
+      setTimeout(function() {
+        var cur = self._pending[entityId];
+        if (cur && cur.token === token) { delete self._pending[entityId]; self._safeUpdate(); }
+      }, 8000);
+    }
+    var r = this._hass.callService('button', 'press', { entity_id: entityId });
+    if (r && typeof r.catch === 'function') {
+      r.catch(function() {
+        if (self._pending[entityId]) { delete self._pending[entityId]; self._safeUpdate(); }
+      });
+    }
+    if (plant) this._updateContent();
+  }
+
+  // Whether a press is sure to change its snapshot. Water / fertilize set
+  // the last date to today and the next date to at least tomorrow, so a
+  // plant already done today and not due shows the same either way. Snooze
+  // is only offered while something is due, so it always changes a field.
+  _pressChangesSig(p, kind) {
+    var today = this._todayIso();
+    if (kind === 'water') return !(p.lastWatered    === today && !this._isUrgent(p.daysWater));
+    if (kind === 'fert')  return !(p.lastFertilized === today && !this._isUrgent(p.daysFert));
+    return true;
+  }
+
+  // Re-render from a timer or a failed call, unless the user is mid-interaction
+  // (the next state update repaints then, as it would anyway).
+  _safeUpdate() {
+    if (this._holding || this._selectOpen || this._notesEditing || this._repottedEditing) return;
+    this._updateContent();
+  }
+
+  _applyPending(plants) {
+    var pending = this._pending;
+    var keys    = Object.keys(pending);
+    if (!keys.length) return plants;
+    var byId = {};
+    plants.forEach(function(p) { byId[p.id] = p; });
+    var self = this;
+    keys.forEach(function(eid) {
+      var pd = pending[eid];
+      var p  = byId[pd.pid];
+      // Plant gone, or the server has answered: real state takes over.
+      if (!p || self._pendingSig(p, pd.kind) !== pd.sig) { delete pending[eid]; return; }
+      if (pd.kind === 'water') p.pendWater  = true;
+      else if (pd.kind === 'fert') p.pendFert = true;
+      else p.pendSnooze = true;
+    });
+    return plants;
+  }
+
+  // Due today/overdue and not already pressed (pending press counts as done).
+  _waterDue(p) { return this._isUrgent(p.daysWater) && !p.pendWater && !p.pendSnooze; }
+  _fertDue(p)  { return this._isUrgent(p.daysFert)  && !p.pendFert  && !p.pendSnooze; }
+  _wateredToday(p, today)    { return p.lastWatered    === today || !!p.pendWater; }
+  _fertilizedToday(p, today) { return p.lastFertilized === today || !!p.pendFert; }
+
+  // Areas in one fixed order for Today: as on the Overview (first appearance
+  // in the name-sorted list of ALL plants), so it never depends on which tasks
+  // are due. Completing a task only removes rows; nothing above or below moves.
+  _areaOrder(allPlants) {
+    var seen = {}; var order = [];
+    allPlants.forEach(function(p) { if (!seen[p.area]) { seen[p.area] = true; order.push(p.area); } });
+    return order;
+  }
+
   _groupByArea(plants) {
     var map = {};
     plants.forEach(function(p) {
@@ -679,8 +820,17 @@ class AdaptivePlantCard extends HTMLElement {
   }
 
   _press(id)                { if (id) this._hass.callService('button', 'press',        { entity_id: id }); }
-  _selectOption(id, option) { this._hass.callService('select', 'select_option',         { entity_id: id, option: option }); }
-  _setValue(id, value)      { this._hass.callService('text',   'set_value',             { entity_id: id, value: value }); }
+  _selectOption(id, option) {
+    var self = this;
+    var r = this._hass.callService('select', 'select_option', { entity_id: id, option: option });
+    // On failure no state changes, so the next render would match the last
+    // one and be skipped, leaving the dropdown on the unsaved value. Force a
+    // repaint so it shows the real health again.
+    if (r && typeof r.catch === 'function') {
+      r.catch(function() { self._lastRenderKey = null; self._safeUpdate(); });
+    }
+  }
+  _setValue(id, value)      { return this._hass.callService('text', 'set_value', { entity_id: id, value: value }); }
 
   _waterChip(str) {
     var icon = this._renderIcon(this._icons.water, this._icons.water_color, '14px');
@@ -696,28 +846,44 @@ class AdaptivePlantCard extends HTMLElement {
     }
     return '<span class="chip chip-fert">' + icon + ' ' + (str === 'Today' ? 'Fertilize today' : str) + '</span>';
   }
-  _actionBtn(cls, entity, iconKey, colorKey, title) {
-    var icon = this._renderIcon(this._icons[iconKey], this._icons[colorKey], '16px');
-    return '<button class="action-btn ' + cls + '" data-entity="' + entity + '" title="' + title + '">' + icon + '</button>';
+  _actionBtn(cls, entity, iconKey, colorKey, title, task, pid, pending) {
+    var icon  = this._renderIcon(this._icons[iconKey], this._icons[colorKey], '16px');
+    var extra = task ? ' data-task="' + task + '" data-pid="' + this._esc(pid) + '"' : '';
+    return '<button class="action-btn ' + cls + (pending ? ' is-pending' : '') + '" data-entity="' + entity + '"' + extra + ' title="' + title + '">' + icon + '</button>';
+  }
+
+  // Display-only check for a task already done today, shown in the slot its
+  // button occupied, so the remaining buttons don't slide under your finger.
+  _doneMark(kind) {
+    if (kind === 'water') return '<span class="done-mark" title="Watered today">'    + this._renderIcon(this._icons.water_done,     this._icons.water_done_color,     '18px') + '</span>';
+    return                       '<span class="done-mark" title="Fertilized today">' + this._renderIcon(this._icons.fertilize_done, this._icons.fertilize_done_color, '18px') + '</span>';
+  }
+
+  // ── Action-button label: the full text, plus a short form that narrow
+  //    cards switch to via a container query (see .detail-actions CSS). ──
+  _btnLabel(long, short) {
+    return '<span class="lbl-long">' + long + '</span><span class="lbl-short">' + short + '</span>';
   }
 
   _confirmHealthBtn(p) {
     var overdue = p.healthCheckInOverdue;
     var color   = overdue ? this._icons.health_confirm_overdue_color : this._icons.health_confirm_color;
-    var label   = overdue ? 'Update Due' : 'Confirm Health';
+    var label   = overdue ? this._btnLabel('Update Due', 'Update') : this._btnLabel('Confirm Health', 'Confirm');
     var icon    = this._renderIcon(this._icons.health_confirm, color, '15px');
     var bg      = this._alphaBg(color);
     return '<button class="detail-btn btn-health" style="color:' + color + ';background:' + bg + ';" data-entity="' + p.btnConfirmHealth + '">' +
-      icon + ' ' + label +
+      icon + label +
     '</button>';
   }
 
   _renderToday(plants) {
     var self     = this;
-    var waterDue = plants.filter(function(p) { return self._isUrgent(p.daysWater); });
-    var fertDue  = plants.filter(function(p) { return self._isUrgent(p.daysFert); });
-    var seen = {}; var dueSet = [];
-    waterDue.concat(fertDue).forEach(function(p) { if (!seen[p.id]) { seen[p.id] = true; dueSet.push(p); } });
+    var today    = this._todayIso();
+    var waterDue = plants.filter(function(p) { return self._waterDue(p); });
+    var fertDue  = plants.filter(function(p) { return self._fertDue(p); });
+    // Name order (plants arrives name-sorted), never "watering first": a plant
+    // that still needs fertilizing after being watered stays where it was.
+    var dueSet   = plants.filter(function(p) { return self._waterDue(p) || self._fertDue(p); });
     var parts = [];
     if (waterDue.length) parts.push(waterDue.length + ' ' + (waterDue.length === 1 ? 'Watering' : 'Waterings'));
     if (fertDue.length)  parts.push(fertDue.length  + ' ' + (fertDue.length  === 1 ? 'Fertilizing' : 'Fertilizings'));
@@ -732,14 +898,19 @@ class AdaptivePlantCard extends HTMLElement {
     }
 
     var byArea = this._groupByArea(dueSet);
-    var rows = Object.keys(byArea).map(function(area) {
+    var rows = this._areaOrder(plants).filter(function(a) { return byArea[a]; }).map(function(area) {
       var byLabel = self._splitByLabel(byArea[area]);
       var inner   = self._labelEntries(byLabel).map(function(e) {
         var lk  = e[0]; var lps = e[1];
         var hdr = lk ? '<div class="label-sub-header">' + self._esc(lk) + '</div>' : '';
         return hdr + lps.map(function(p) {
-          var wu = self._isUrgent(p.daysWater);
-          var fu = self._isUrgent(p.daysFert);
+          var wu = self._waterDue(p);
+          var fu = self._fertDue(p);
+          // A task this plant already finished today keeps its slot as a check.
+          var fertSlot  = fu && p.btnFert  ? self._actionBtn('btn-fert',  p.btnFert,  'fertilize_done', 'fertilize_done_color', 'Mark fertilized', 'fert',  p.id)
+                        : (self._fertilizedToday(p, today) ? self._doneMark('fert')  : '');
+          var waterSlot = wu && p.btnWater ? self._actionBtn('btn-water', p.btnWater, 'water_done',     'water_done_color',     'Mark watered',    'water', p.id)
+                        : (self._wateredToday(p, today)    ? self._doneMark('water') : '');
           return '<div class="plant-row">' +
             self._avatar(p, 'today') +
             '<div class="plant-info">' +
@@ -749,9 +920,8 @@ class AdaptivePlantCard extends HTMLElement {
               '<div class="chips">' + (wu ? (self._showMoisture('today') && p.hasMoisture ? self._moistureChip(p, '14px') : self._waterChip(p.daysWater)) : '') + (fu ? self._fertChip(p.daysFert) : '') + '</div>' +
             '</div>' +
             '<div class="row-actions">' +
-              ((wu || fu) && p.btnSnooze ? self._actionBtn('btn-snooze', p.btnSnooze, 'snooze',         'snooze_color',         "Snooze today's tasks") : '') +
-              (fu && p.btnFert   ? self._actionBtn('btn-fert',   p.btnFert,   'fertilize_done', 'fertilize_done_color', 'Mark fertilized')       : '') +
-              (wu && p.btnWater  ? self._actionBtn('btn-water',  p.btnWater,  'water_done',     'water_done_color',     'Mark watered')          : '') +
+              ((wu || fu) && p.btnSnooze ? self._actionBtn('btn-snooze', p.btnSnooze, 'snooze', 'snooze_color', "Snooze today's tasks", 'snooze', p.id) : '') +
+              fertSlot + waterSlot +
             '</div>' +
           '</div>';
         }).join('');
@@ -782,8 +952,8 @@ class AdaptivePlantCard extends HTMLElement {
     var self  = this;
     var today = this._todayIso();
     return plants.filter(function(p) {
-      if (self._isUrgent(p.daysWater) || self._isUrgent(p.daysFert)) return false;
-      return p.lastWatered === today || p.lastFertilized === today;
+      if (self._waterDue(p) || self._fertDue(p)) return false;
+      return self._wateredToday(p, today) || self._fertilizedToday(p, today);
     });
   }
 
@@ -795,16 +965,14 @@ class AdaptivePlantCard extends HTMLElement {
     var done  = this._completedToday(plants);
     if (!done.length) return '';
     var byArea = this._groupByArea(done);
-    var rows = Object.keys(byArea).map(function(area) {
+    var rows = this._areaOrder(plants).filter(function(a) { return byArea[a]; }).map(function(area) {
       var byLabel = self._splitByLabel(byArea[area]);
       var inner   = self._labelEntries(byLabel).map(function(e) {
         var lk  = e[0]; var lps = e[1];
         var hdr = lk ? '<div class="label-sub-header">' + self._esc(lk) + '</div>' : '';
         return hdr + lps.map(function(p) {
-          var fertMark  = p.lastFertilized === today
-            ? '<span class="done-mark" title="Fertilized today">' + self._renderIcon(self._icons.fertilize_done, self._icons.fertilize_done_color, '18px') + '</span>' : '';
-          var waterMark = p.lastWatered === today
-            ? '<span class="done-mark" title="Watered today">'    + self._renderIcon(self._icons.water_done,     self._icons.water_done_color,     '18px') + '</span>' : '';
+          var fertMark  = self._fertilizedToday(p, today) ? self._doneMark('fert')  : '';
+          var waterMark = self._wateredToday(p, today)    ? self._doneMark('water') : '';
           return '<div class="plant-row">' +
             self._avatar(p, 'today') +
             '<div class="plant-info">' +
@@ -827,8 +995,8 @@ class AdaptivePlantCard extends HTMLElement {
   _urgentIcons(p) {
     var oc  = this._overdueColor;
     var out = '';
-    if (this._isUrgent(p.daysWater))  out += '<span class="urgent-icon" title="Watering due">'          + this._renderIcon(this._icons.water,          oc, '14px') + '</span>';
-    if (this._isUrgent(p.daysFert))   out += '<span class="urgent-icon" title="Fertilization due">'     + this._renderIcon(this._icons.fertilize,      oc, '14px') + '</span>';
+    if (this._waterDue(p))            out += '<span class="urgent-icon" title="Watering due">'          + this._renderIcon(this._icons.water,          oc, '14px') + '</span>';
+    if (this._fertDue(p))             out += '<span class="urgent-icon" title="Fertilization due">'     + this._renderIcon(this._icons.fertilize,      oc, '14px') + '</span>';
     if (p.healthCheckInOverdue)       out += '<span class="urgent-icon" title="Health check-in due">'   + this._renderIcon(this._icons.health_confirm, oc, '14px') + '</span>';
     return out ? '<span class="urgent-icons">' + out + '</span>' : '';
   }
@@ -897,8 +1065,8 @@ class AdaptivePlantCard extends HTMLElement {
                 '</div>' +
               '</div>' +
               '<div class="row-actions">' +
-                (pg.fert  && p.btnFert  ? self._actionBtn('btn-fert',  p.btnFert,  'fertilize_done', 'fertilize_done_color', 'Fertilize early') : '') +
-                (pg.water && p.btnWater ? self._actionBtn('btn-water', p.btnWater, 'water_done',     'water_done_color',     'Water early')      : '') +
+                (pg.fert  && p.btnFert  ? self._actionBtn('btn-fert',  p.btnFert,  'fertilize_done', 'fertilize_done_color', 'Fertilize early', 'fert',  p.id, p.pendFert)  : '') +
+                (pg.water && p.btnWater ? self._actionBtn('btn-water', p.btnWater, 'water_done',     'water_done_color',     'Water early',     'water', p.id, p.pendWater) : '') +
               '</div>' +
             '</div>';
           }).join('');
@@ -1023,12 +1191,12 @@ class AdaptivePlantCard extends HTMLElement {
             self._customSensorRows(p) +
             notesHtml +
             careHtml +
-            '<div class="detail-actions">' +
-              (p.btnWater         ? '<button class="detail-btn btn-water"  data-entity="' + p.btnWater  + '">' + self._renderIcon(self._icons.water,     self._icons.water_color,     '15px') + ' Mark Watered</button>'    : '') +
-              (p.btnFert          ? '<button class="detail-btn btn-fert"   data-entity="' + p.btnFert   + '">' + self._renderIcon(self._icons.fertilize, self._icons.fertilize_color, '15px') + ' Mark Fertilized</button>' : '') +
+            '<div class="detail-actions-wrap"><div class="detail-actions">' +
+              (p.btnWater         ? '<button class="detail-btn btn-water' + (p.pendWater ? ' is-pending' : '') + '" data-entity="' + p.btnWater + '" data-task="water" data-pid="' + self._esc(p.id) + '">' + self._renderIcon(self._icons.water,     self._icons.water_color,     '15px') + self._btnLabel('Mark Watered', 'Watered') + '</button>'    : '') +
+              (p.btnFert          ? '<button class="detail-btn btn-fert'  + (p.pendFert  ? ' is-pending' : '') + '" data-entity="' + p.btnFert  + '" data-task="fert" data-pid="'  + self._esc(p.id) + '">' + self._renderIcon(self._icons.fertilize, self._icons.fertilize_color, '15px') + self._btnLabel('Mark Fertilized', 'Fertilized') + '</button>' : '') +
               (self._showRepotting && p.btnRepotted ? self._repottedBtn(p) : '') +
               (p.btnConfirmHealth ? self._confirmHealthBtn(p) : '') +
-            '</div>' +
+            '</div></div>' +
           '</div>';
           return row + detail;
         }).join('');
@@ -1038,12 +1206,13 @@ class AdaptivePlantCard extends HTMLElement {
     }).join('');
   }
 
-  _attachHold(plants) {
+  _attachHold() {
     var self   = this;
     var btn    = this.shadowRoot.getElementById('hold-all');
     if (!btn) return;
     var circle = this.shadowRoot.getElementById('hold-fill-circle');
     var CIRC   = 94.25; var DUR = 1500; var t0 = null;
+    var onHidden = function() { if (document.hidden) cancel(); };
     var tick = function(ts) {
       if (!t0) t0 = ts;
       var pct = Math.min((ts - t0) / DUR, 1);
@@ -1052,26 +1221,40 @@ class AdaptivePlantCard extends HTMLElement {
         self._holdRaf = requestAnimationFrame(tick);
       } else {
         requestAnimationFrame(function() {
+          self._holdRaf = null;
           self._holding = false;
-          plants.filter(function(p) { return self._isUrgent(p.daysWater) && p.btnWater; }).forEach(function(p) { self._press(p.btnWater); });
-          plants.filter(function(p) { return self._isUrgent(p.daysFert)  && p.btnFert;  }).forEach(function(p) { self._press(p.btnFert);  });
+          document.removeEventListener('visibilitychange', onHidden);
+          // Read the plants now, not from when the bar was drawn: the render
+          // may have been skipped as identical since then.
+          var plants = self._plants();
+          var water  = plants.filter(function(p) { return self._waterDue(p) && p.btnWater; });
+          var fert   = plants.filter(function(p) { return self._fertDue(p)  && p.btnFert;  });
+          water.forEach(function(p) { self._pressTask(p.btnWater, 'water', p.id); });
+          fert.forEach(function(p)  { self._pressTask(p.btnFert,  'fert',  p.id); });
+          if (!water.length && !fert.length && circle) circle.setAttribute('stroke-dasharray', '0 ' + CIRC);
         });
       }
     };
     var start = function(e) {
       e.preventDefault(); t0 = null; self._holding = true;
+      document.addEventListener('visibilitychange', onHidden);
       self._holdRaf = requestAnimationFrame(tick);
     };
     var cancel = function() {
       self._holding = false;
+      document.removeEventListener('visibilitychange', onHidden);
       if (self._holdRaf) { cancelAnimationFrame(self._holdRaf); self._holdRaf = null; }
       if (circle) circle.setAttribute('stroke-dasharray', '0 ' + CIRC);
     };
-    btn.addEventListener('mousedown',  start);
-    btn.addEventListener('touchstart', start, { passive: false });
-    btn.addEventListener('mouseup',    cancel);
-    btn.addEventListener('mouseleave', cancel);
-    btn.addEventListener('touchend',   cancel);
+    btn.addEventListener('mousedown',   start);
+    btn.addEventListener('touchstart',  start, { passive: false });
+    btn.addEventListener('mouseup',     cancel);
+    btn.addEventListener('mouseleave',  cancel);
+    btn.addEventListener('touchend',    cancel);
+    // B1: a touch the browser takes over (scroll, system gesture), a long-press
+    // menu, or the app going to the background must never complete the hold.
+    btn.addEventListener('touchcancel', cancel);
+    btn.addEventListener('contextmenu', cancel);
   }
 
   _labelSubHeaderCss() {
@@ -1157,9 +1340,12 @@ class AdaptivePlantCard extends HTMLElement {
       '.btn-water{background:rgba(100,180,255,0.15);color:#64b4ff;}.btn-water:hover{background:rgba(100,180,255,0.3);}',
       '.btn-snooze{background:rgba(255,255,255,0.08);color:#aaaaaa;}.btn-snooze:hover{background:rgba(255,255,255,0.16);}',
       '.btn-fert{background:rgba(124,185,126,0.15);color:#7cb97e;}.btn-fert:hover{background:rgba(124,185,126,0.3);}',
+      '.is-pending{opacity:0.45;pointer-events:none;}',
       '.plant-detail{padding:4px 16px 12px ' + detailPad + 'px;border-bottom:1px solid rgba(255,255,255,0.06);}',
       '.detail-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;font-size:13px;}',
-      '.custom-sensor-row .detail-label{display:inline-flex;align-items:center;}',
+      '.custom-sensor-row .detail-label{display:inline-flex;align-items:center;gap:5px;flex-shrink:1;min-width:0;}',
+      '.custom-sensor-row .cs-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;}',
+      '.custom-sensor-row .detail-value{white-space:nowrap;flex-shrink:0;}',
       '.detail-label{color:var(--secondary-text-color,#888);flex-shrink:0;margin-right:12px;}.detail-value{font-weight:500;}',
       '.health-select{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:var(--primary-text-color,#e5e5e5);font-size:13px;padding:4px 8px;cursor:pointer;outline:none;}',
       '.notes-section{margin:6px 0;}.notes-display{display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;font-size:13px;}',
@@ -1170,7 +1356,17 @@ class AdaptivePlantCard extends HTMLElement {
       '.notes-save{background:#7cb97e;color:#fff;}.notes-cancel{background:rgba(255,255,255,0.08);color:#aaa;}',
       '.care-section{margin:6px 0;font-size:13px;}.care-section .detail-label{display:block;margin-bottom:4px;}',
       '.care-body{font-size:13px;line-height:1.45;color:var(--primary-text-color,#e5e5e5);}',
-      '.detail-actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;}',
+      '.detail-actions-wrap{container-type:inline-size;margin-top:10px;}.detail-actions{display:flex;gap:8px;flex-wrap:wrap;}',
+      '.detail-btn .lbl-short{display:none;}',
+      // Narrow cards: two buttons per row instead of one per row, smaller text,
+      // then short labels ("Watered", "Fertilized", ...) when even that won't fit.
+      // Breakpoints are measured: two full-size pills fit side by side down to
+      // 272px, long labels at 12px fit two per row down to 240px, short labels
+      // down to 176px. Browsers without container queries keep the wrapping
+      // layout above.
+      '@container (max-width: 271px){.detail-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px;}.detail-actions .detail-btn{justify-content:center;padding:7px 8px;font-size:12px;min-width:0;white-space:nowrap;}.detail-actions .detail-btn:last-child:nth-child(odd){grid-column:1 / -1;}}',
+      '@container (max-width: 239px){.detail-actions .lbl-long{display:none;}.detail-actions .lbl-short{display:inline;}}',
+      '@container (max-width: 175px){.detail-actions{grid-template-columns:1fr;}}',
       '.detail-btn{padding:7px 14px;border-radius:20px;border:none;cursor:pointer;font-size:13px;font-weight:500;display:inline-flex;align-items:center;gap:5px;transition:filter 0.15s;}',
       '.detail-btn.btn-water{background:rgba(100,180,255,0.15);color:#64b4ff;}.detail-btn.btn-fert{background:rgba(124,185,126,0.15);color:#7cb97e;}',
       '.detail-btn.btn-health{transition:filter 0.15s;}',
@@ -1282,13 +1478,16 @@ class AdaptivePlantCardEditor extends HTMLElement {
       '</div></div>' +
       '<div class="field-group"><div class="field-label">Today tab</div><div class="toggle-row">' +
         this._toggle('Show "Hold to Mark All Tasks Completed" button', 'show_hold_button',     this._get('show_hold_button',     true))  +
+        // Pinning only matters while the hold button is shown.
+        (this._get('show_hold_button', true) !== false
+          ? this._toggle('Pin hold button to bottom', 'pin_hold_button', this._get('pin_hold_button', false))
+          : '') +
         this._toggle('Show completed tasks',                          'show_completed_today', this._get('show_completed_today', false)) +
       '</div>' +
         '<div class="field-hint">The hold button only appears when there is something to complete. Completed tasks are listed under a <em>Completed Today</em> section below your active tasks, with display-only checks.</div>' +
       '</div>' +
       '<div class="field-group"><div class="field-label">Card appearance</div><div class="toggle-row">' +
         this._toggle('Show card background',      'show_background',  this._get('show_background',  true))  +
-        this._toggle('Pin hold button to bottom', 'pin_hold_button',  this._get('pin_hold_button',  false)) +
       '</div>' +
         '<div class="field-row" style="margin-top:6px;">' +
           this._colorField('Card background color', 'card_background_color', this._get('card_background_color', '#1c1c1e')) +
