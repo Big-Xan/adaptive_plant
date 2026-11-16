@@ -550,8 +550,14 @@ class AdaptivePlantCard extends HTMLElement {
         e.stopPropagation();
         var input = root.querySelector('#repotted-input-' + el.dataset.plantId);
         var val   = input ? input.value.trim() : '';
-        self._setValue(el.dataset.repottedEntity, val);
-        self._press(el.dataset.repottedBtn);
+        // Press only once the date is stored, so the button never reads the
+        // old input. If storing fails, HA shows the error and nothing is pressed.
+        var stored = self._setValue(el.dataset.repottedEntity, val);
+        if (stored && typeof stored.then === 'function') {
+          stored.then(function() { self._press(el.dataset.repottedBtn); }, function() {});
+        } else {
+          self._press(el.dataset.repottedBtn);
+        }
       });
     });
   }
@@ -807,7 +813,7 @@ class AdaptivePlantCard extends HTMLElement {
       r.catch(function() { self._lastRenderKey = null; self._safeUpdate(); });
     }
   }
-  _setValue(id, value)      { this._hass.callService('text',   'set_value',             { entity_id: id, value: value }); }
+  _setValue(id, value)      { return this._hass.callService('text', 'set_value', { entity_id: id, value: value }); }
 
   _waterChip(str) {
     var icon = this._renderIcon(this._icons.water, this._icons.water_color, '14px');
