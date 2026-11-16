@@ -12,6 +12,7 @@ from datetime import date, timedelta
 from homeassistant.components.persistent_notification import async_create as pn_async_create
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ServiceValidationError
 
 from .const import (
     CONF_AREA,
@@ -45,6 +46,7 @@ from .const import (
     DEFAULT_HEALTH_PROMPT_INTERVAL,
     DEFAULT_SNOOZE_THRESHOLD,
     DEFAULT_WATERING_INTERVAL,
+    DOMAIN,
     HEALTH_OPTIONS,
     NOTIFICATION_ID_PREFIX,
     OPT_FERTILIZATION_INTERVAL,
@@ -761,23 +763,31 @@ class PlantData:
     async def mark_repotted(self) -> None:
         """Stamp the repotting date.
 
-        Uses the value of the repotted_date_input text entity if it contains a
-        valid ISO date, otherwise falls back to today. Clears the input field
-        after stamping so it doesn't linger as a stale suggestion.
+        Uses the date in the repotted_date_input text entity, or today when it
+        is blank. A date that isn't valid YYYY-MM-DD, or is in the future,
+        raises a validation error (shown by the frontend) and records nothing,
+        leaving the text in place to correct. Clears the input field after
+        stamping so it doesn't linger as a stale suggestion.
         """
         today = date.today()
         raw = self.repotted_date_input.strip()
         stamp: str
         if raw:
             try:
-                date.fromisoformat(raw)   # validate
-                stamp = raw
+                stamp_date = date.fromisoformat(raw)
             except ValueError:
-                _LOGGER.warning(
-                    "%s: repotted_date_input '%s' is not a valid ISO date — using today",
-                    self.plant_name, raw,
+                raise ServiceValidationError(
+                    translation_domain=DOMAIN,
+                    translation_key="invalid_repot_date",
+                    translation_placeholders={"value": raw},
+                ) from None
+            if stamp_date > today:
+                raise ServiceValidationError(
+                    translation_domain=DOMAIN,
+                    translation_key="future_repot_date",
+                    translation_placeholders={"value": raw},
                 )
-                stamp = today.isoformat()
+            stamp = stamp_date.isoformat()
         else:
             stamp = today.isoformat()
 

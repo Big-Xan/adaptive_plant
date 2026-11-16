@@ -508,5 +508,13 @@
       "latin_name": { "name": "Latin name" },
       "repotted_date_input": { "name": "Repotted on" }
     }
+  },
+  "exceptions": {
+    "invalid_repot_date": {
+      "message": "\"{value}\" isn't a valid date. Enter the repotting date as YYYY-MM-DD (for example 2026-04-01), or leave it blank to use today."
+    },
+    "future_repot_date": {
+      "message": "{value} is in the future. Enter the date the plant was repotted, or leave it blank to use today."
+    }
   }
 }
