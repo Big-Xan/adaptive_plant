@@ -693,6 +693,11 @@ class AdaptivePlantCard extends HTMLElement {
     if (!entityId || !this._hass) return;
     var self  = this;
     var plant = pid ? this._rawPlants().find(function(p) { return p.id === pid; }) : null;
+    // A press that can't change what's shown (a second watering or
+    // fertilization on the same day, while not due) gets no pending entry:
+    // its snapshot would never differ, so the button would stay greyed until
+    // the 8-second timer. The press still goes to the server.
+    if (plant && !this._pressChangesSig(plant, kind)) plant = null;
     if (plant) {
       var token = {};
       this._pending[entityId] = { kind: kind, pid: pid, sig: this._pendingSig(plant, kind), token: token };
@@ -708,6 +713,17 @@ class AdaptivePlantCard extends HTMLElement {
       });
     }
     if (plant) this._updateContent();
+  }
+
+  // Whether a press is sure to change its snapshot. Water / fertilize set
+  // the last date to today and the next date to at least tomorrow, so a
+  // plant already done today and not due shows the same either way. Snooze
+  // is only offered while something is due, so it always changes a field.
+  _pressChangesSig(p, kind) {
+    var today = this._todayIso();
+    if (kind === 'water') return !(p.lastWatered    === today && !this._isUrgent(p.daysWater));
+    if (kind === 'fert')  return !(p.lastFertilized === today && !this._isUrgent(p.daysFert));
+    return true;
   }
 
   // Re-render from a timer or a failed call, unless the user is mid-interaction
