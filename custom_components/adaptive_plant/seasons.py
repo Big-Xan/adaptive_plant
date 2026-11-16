@@ -154,12 +154,16 @@ def is_fert_paused(table, day: date) -> bool:
 
 
 def pauses_whole_year(table) -> bool:
-    """True if paused seasons together cover every day, so fertilization never resumes."""
+    """True if paused seasons together cover every day, so fertilization never resumes.
+
+    Checked against a non-leap year too: a table that leaves only Feb 29
+    unpaused would pause every day of a year without one.
+    """
     paused: set = set()
     for season in valid_seasons(table):
         if season.get(SEASON_PAUSE_FERT):
             paused |= season_days(season)
-    return len(paused) == len(_ALL_DAYS)
+    return len(paused - {(2, 29)}) == len(_ALL_DAYS) - 1
 
 
 def clamp_fert_date(candidate: date, table, today: date) -> date:
