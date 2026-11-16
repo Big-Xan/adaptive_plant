@@ -6,12 +6,29 @@ from datetime import date
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
 from .plant import PlantData
+
+
+def moisture_entity_wanted(hass: HomeAssistant, entry: ConfigEntry, plant: PlantData) -> bool:
+    """Whether this plant gets a Soil moisture entity.
+
+    Plants with a moisture sensor always do. Plants without one keep the
+    entity they already have: every plant created before 1.2.4 was given one,
+    and removing it could break dashboards or automations. New plants without
+    a sensor don't get one; linking a sensor later reloads the entry to add it
+    (see __init__.py).
+    """
+    if plant.moisture_sensor:
+        return True
+    return er.async_get(hass).async_get_entity_id(
+        "sensor", DOMAIN, f"{entry.entry_id}_current_moisture"
+    ) is not None
 
 
 async def async_setup_entry(
@@ -27,8 +44,10 @@ async def async_setup_entry(
         DaysUntilWateringSensor(plant, entry),
         EarlyWateringCountSensor(plant, entry),
         SnoozeCountSensor(plant, entry),
-        CurrentMoistureSensor(plant, entry),
     ]
+
+    if moisture_entity_wanted(hass, entry, plant):
+        entities.append(CurrentMoistureSensor(plant, entry))
 
     if plant.enable_fertilization:
         entities.extend([
@@ -268,9 +287,9 @@ class DaysUntilFertilizingSensor(PlantSensorBase):
 class CurrentMoistureSensor(PlantSensorBase):
     """Diagnostic sensor that mirrors the linked moisture sensor's current reading.
 
-    Always created so it appears on the device page in the HA integration panel.
-    Disabled by default when no moisture sensor is configured; automatically
-    enabled once a sensor is assigned. The direct source subscription re-points
+    Created for plants with a moisture sensor, and kept for plants that already
+    have one (see moisture_entity_wanted). Unavailable while no sensor is
+    linked. The direct source subscription re-points
     itself when the linked sensor is changed in options, so no entry reload is
     required.
     """
