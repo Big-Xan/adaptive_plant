@@ -2,7 +2,7 @@
 
 A fully local, event-driven Home Assistant custom integration for tracking and managing your plants — with intelligent adaptive watering logic that learns your plants' needs over time. Includes a highly customizable companion Lovelace card with a full visual editor and a task reminder blueprint for Companion App notifications.
 
-<img width="2400" height="1260" alt="Adaptive Plant Header(5)" src="https://github.com/user-attachments/assets/ecf3ffb3-d45f-454e-9214-cee3669e389e" />
+<img width="2400" height="1260" alt="Adaptive Plant on a tablet and a phone" src="https://github.com/user-attachments/assets/ecf3ffb3-d45f-454e-9214-cee3669e389e" />
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 ![HA Version](https://img.shields.io/badge/HA-2024.7%2B-blue)
@@ -113,9 +113,10 @@ Show readings from any sensor you already have — temperature, humidity, light,
 
 > **Note:** A linked sensor is stored by its entity ID. If you rename that entity's ID later, the chip shows `—`; link the sensor again under Configure.
 
-<img width="960" height="1270" alt="linked-sensors-overview" src="https://github.com/user-attachments/assets/34405f25-2d62-44be-9db9-1985938c4571" />
-
-<img width="755" height="1025" alt="image" src="https://github.com/user-attachments/assets/290c42fa-58fc-4036-b0f5-82899a456e10" />
+<p align="center">
+  <img width="400" alt="Linked sensors on the Overview tab" src="https://github.com/user-attachments/assets/34405f25-2d62-44be-9db9-1985938c4571" />
+  <img width="400" alt="Link a sensor dialog" src="https://github.com/user-attachments/assets/290c42fa-58fc-4036-b0f5-82899a456e10" />
+</p>
 
 ### 🗓️ Seasonal Schedules (Experimental)
 Give a plant a different watering (and fertilization) schedule for parts of the year — water less in winter, more in summer, or pause feeding while the plant is dormant.
@@ -131,9 +132,10 @@ Give a plant a different watering (and fertilization) schedule for parts of the 
 
 > **Experimental:** please report anything odd on the [issue tracker](https://github.com/Big-Xan/adaptive_plant/issues).
 
-<img width="672" height="730" alt="image" src="https://github.com/user-attachments/assets/8a0fe78c-ec0c-46e9-b423-4f0fba3cad27" />
-
-<img width="1210" height="1157" alt="image" src="https://github.com/user-attachments/assets/3e67b689-bc35-48cc-a19c-d2b585a6c5a0" />
+<p align="center">
+  <img width="370" alt="Seasonal schedule manager" src="https://github.com/user-attachments/assets/8a0fe78c-ec0c-46e9-b423-4f0fba3cad27" />
+  <img width="430" alt="Editing the Summer and Winter seasons" src="https://github.com/user-attachments/assets/3e67b689-bc35-48cc-a19c-d2b585a6c5a0" />
+</p>
 
 ### 🏠 Area & Label Support
 - Assign each plant to a Home Assistant area during setup
@@ -188,7 +190,9 @@ Do you also propagate your plants? When you already have **at least one plant al
 
 To edit any setting after setup, go to **Settings → Devices & Services → Adaptive Plant → Configure**. Once a plant has linked sensors or seasons, Configure opens a small menu: **Plant settings**, **Linked sensors**, and **Seasonal schedule**.
 
-<img width="1057" height="500" alt="image" src="https://github.com/user-attachments/assets/e6553047-c6f1-4e7d-8afa-c0bb6ac175cc" />
+<p align="center">
+  <img width="440" alt="Configure menu" src="https://github.com/user-attachments/assets/e6553047-c6f1-4e7d-8afa-c0bb6ac175cc" />
+</p>
 
 Turning on fertilization, notes, latin name, repotting, or a moisture sensor after setup reloads the plant automatically so its new entities appear — no manual reload or restart.
 
@@ -279,7 +283,7 @@ Hard refresh your browser (Ctrl+Shift+R / Cmd+Shift+R) after installing or updat
 The card is fully configurable via the visual editor — no YAML required. The card can be modified via YAML if that is your preference (scroll down).
 
 **Default configuration - no options set (all 3 tabs shown for visual reference. They are displayed one at a time by the card.):**
-<img width="2912" height="1768" alt="BIG(21)" src="https://github.com/user-attachments/assets/860cf243-4a54-4e28-babe-01d823e238d5" />
+<img width="2912" height="1768" alt="Default card configuration: Today, Upcoming and Overview tabs" src="https://github.com/user-attachments/assets/860cf243-4a54-4e28-babe-01d823e238d5" />
 
 
 
@@ -289,7 +293,7 @@ type: custom:adaptive-plant-card
 
 **Custom palette — deep blue-gray background, muted sage tabs, warm amber area headers and copper label sub-headers. Max height set, latin name enabled, centered labels, pinned hold button:**
 
-<img width="2912" height="1521" alt="BIG(22)" src="https://github.com/user-attachments/assets/21cf4cb7-d1de-431d-898c-4c88fe429ded" />
+<img width="2912" height="1521" alt="Custom palette card configuration" src="https://github.com/user-attachments/assets/21cf4cb7-d1de-431d-898c-4c88fe429ded" />
 
 ```yaml
 type: custom:adaptive-plant-card
@@ -316,7 +320,9 @@ latin_name_padding: 2
 ```
 
 **Visual editor (shown at v19.2; v20 adds the Today tab section below) — every option is configurable without touching YAML. Customization is virtually endless:**
-<img width="1514" height="2912" alt="BIG(28)" src="https://github.com/user-attachments/assets/0188265c-fe8d-4ae0-9198-534694ab2a46" />
+<p align="center">
+  <img width="620" alt="Visual editor" src="https://github.com/user-attachments/assets/0188265c-fe8d-4ae0-9198-534694ab2a46" />
+</p>
 
 
 
@@ -326,7 +332,9 @@ latin_name_padding: 2
 
 **Today tab options (v20):**
 
-<img width="1050" height="565" alt="image" src="https://github.com/user-attachments/assets/83149699-0ae9-419e-8ffa-924b95080edf" />
+<p align="center">
+  <img width="520" alt="Today tab options in the visual editor" src="https://github.com/user-attachments/assets/83149699-0ae9-419e-8ffa-924b95080edf" />
+</p>
 
 **For full YAML configuration reference:**
 ```yaml
