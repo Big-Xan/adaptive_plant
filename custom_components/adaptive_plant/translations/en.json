@@ -60,7 +60,7 @@
           "moisture_sensor": "Moisture sensor (optional)"
         },
         "data_description": {
-          "enable_seasons": "Give this plant a different schedule for parts of the year. You'll add the seasons at the end of setup. The intervals you entered become the base schedule, used on every day no season covers. Experimental: please report any bugs at https://github.com/Big-Xan/adaptive_plant/issues",
+          "enable_seasons": "Give this plant a different schedule for parts of the year. You'll add the seasons at the end of setup. The intervals you entered become the base schedule, applied to days/periods that fall outside of seasons. Experimental: to report a bug, copy this link and paste it into your browser: {issues_url}",
           "moisture_sensor": "Select an existing sensor to drive automatic watering logic."
         }
       },
@@ -144,11 +144,11 @@
       },
       "seasons": {
         "title": "Seasonal Schedule (Experimental)",
-        "description": "Seasons change this plant's schedule for parts of the year. On every day no season covers, the **base schedule** applies. The base schedule and each season learn their own watering interval as you water and snooze.\n\n{count} of {max} seasons. In effect today: {active}.\n\nChanges are kept only when you choose **Save seasons**. **Discard changes** creates the plant without seasons.\n\nThis feature is experimental. Please report any bugs at https://github.com/Big-Xan/adaptive_plant/issues"
+        "description": "Seasons change this plant's schedule for parts of the year. Days/periods that fall outside of seasons apply the **base schedule**. The base schedule and each season learn their own watering interval as you water and snooze.\n\n{count} of {max} seasons. In effect today: {active}.\n\nChanges are kept only when you choose **Save seasons**. **Discard changes** creates the plant without seasons.\n\nThis feature is experimental. Please report any bugs at {issues_url}"
       },
       "edit_base": {
         "title": "Base Schedule",
-        "description": "This plant's normal schedule, in effect on every day no season covers. It keeps adapting during those days. New seasons can start from it, and the plant returns to it if you turn seasons off. Changing it doesn't change any existing season.",
+        "description": "This plant's normal schedule, applied to days/periods that fall outside of seasons. It keeps adapting during those days. New seasons can start from it, and the plant returns to it if you turn seasons off. Changing it doesn't change any existing season.",
         "data": {
           "base_interval": "Watering interval (days)",
           "base_fert_interval": "Fertilization interval (days)"
@@ -314,7 +314,7 @@
           "label": "Optional sublabel to group plants within an area (e.g. Left shelf, Window sill). Leave blank or enter 'null' to remove.",
           "watering_interval_days": "With a seasonal schedule on, this edits the schedule in effect today: the current season, or the base schedule.",
           "fertilization_interval_days": "With a seasonal schedule on, this edits the schedule in effect today: the current season, or the base schedule.",
-          "enable_seasons": "Give this plant a different schedule for parts of the year. Its current intervals become the base schedule, used on every day no season covers. Turn on to add seasons. Turning off asks which schedule to keep, then deletes the base schedule and all seasons. Experimental: please report any bugs at https://github.com/Big-Xan/adaptive_plant/issues",
+          "enable_seasons": "Give this plant a different schedule for parts of the year. Its current intervals become the base schedule, applied to days/periods that fall outside of seasons. Turn on to add seasons. Turning off asks which schedule to keep, then deletes the base schedule and all seasons. Experimental: to report a bug, copy this link and paste it into your browser: {issues_url}",
           "notes_enabled": "Toggle to enable or disable the notes field for this plant.",
           "fertilization_enabled": "Toggle to enable or disable fertilization tracking. Previous dates are preserved when re-enabled.",
           "repotting_enabled": "Toggle to enable or disable repotting tracking. Previous dates are preserved when re-enabled.",
@@ -383,11 +383,11 @@
       },
       "seasons": {
         "title": "Seasonal Schedule (Experimental)",
-        "description": "Seasons change this plant's schedule for parts of the year. On every day no season covers, the **base schedule** applies. The base schedule and each season learn their own watering interval as you water and snooze.\n\n{count} of {max} seasons. In effect today: {active}.\n\nChanges are kept only when you choose **Save seasons**. **Discard changes** leaves this plant's seasons as they were.\n\nThis feature is experimental. Please report any bugs at https://github.com/Big-Xan/adaptive_plant/issues"
+        "description": "Seasons change this plant's schedule for parts of the year. Days/periods that fall outside of seasons apply the **base schedule**. The base schedule and each season learn their own watering interval as you water and snooze.\n\n{count} of {max} seasons. In effect today: {active}.\n\nChanges are kept only when you choose **Save seasons**. **Discard changes** leaves this plant's seasons as they were.\n\nThis feature is experimental. Please report any bugs at {issues_url}"
       },
       "edit_base": {
         "title": "Base Schedule",
-        "description": "This plant's normal schedule, in effect on every day no season covers. It keeps adapting during those days. New seasons can start from it, and the plant returns to it if you turn seasons off. Changing it doesn't change any existing season.",
+        "description": "This plant's normal schedule, applied to days/periods that fall outside of seasons. It keeps adapting during those days. New seasons can start from it, and the plant returns to it if you turn seasons off. Changing it doesn't change any existing season.",
         "data": {
           "base_interval": "Watering interval (days)",
           "base_fert_interval": "Fertilization interval (days)"
@@ -464,7 +464,7 @@
       "season_overlap": "These dates overlap another season.",
       "season_adjust_range": "That change would make the interval shorter than 1 day or longer than 365.",
       "season_interval_sync": "The watering interval must be longer than the fertilization sync window.",
-      "seasons_too_few": "Add at least one season before saving, or choose Discard changes.",
+      "seasons_too_few": "Add at least one season before saving, or choose Discard changes. To use the base schedule all year, turn off the seasonal schedule in Plant settings.",
       "seasons_all_paused": "Fertilization can't be paused for the whole year. Leave at least one day unpaused."
     }
   },

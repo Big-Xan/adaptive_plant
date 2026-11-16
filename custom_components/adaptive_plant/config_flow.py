@@ -126,6 +126,11 @@ CONF_REMOVE_SEASON = "remove_season"
 CONF_SEASON_OFF_CHOICE = "season_off_choice"
 SEASON_FROM_BASE = "base"
 
+# Bug-report link for the Experimental notes. Passed as the {issues_url}
+# description placeholder: hassfest rejects URLs written into strings.json.
+ISSUES_URL = "https://github.com/Big-Xan/adaptive_plant/issues"
+_ISSUES_PLACEHOLDER = {"issues_url": ISSUES_URL}
+
 # Inline (untranslated) labels, like the date-picker choices.
 _MONTHS = [
     "January", "February", "March", "April", "May", "June",
@@ -376,20 +381,20 @@ def _season_sort(table: list[dict]) -> list[dict]:
 
 
 def _period_text(season: dict | None, base: dict, fert_enabled: bool) -> str:
-    """ "water every 12 days, fertilize every 45" (or ", fertilization paused")."""
+    """ "water every 12 days, fertilize every 45 days" (", paused" when paused)."""
     text = f"water every {period_water(season, base)} days"
     if fert_enabled:
-        if season and season.get(SEASON_PAUSE_FERT):
+        paused = bool(season and season.get(SEASON_PAUSE_FERT))
+        fert = period_fert(season, base)
+        if fert is not None:
+            text += f", fertilize every {fert} days" + (", paused" if paused else "")
+        elif paused:
             text += ", fertilization paused"
-        else:
-            fert = period_fert(season, base)
-            if fert is not None:
-                text += f", fertilize every {fert} days"
     return text
 
 
 def _season_label(season: dict, base: dict, fert_enabled: bool) -> str:
-    """ "Winter (Nov 1 – Mar 14): water every 12 days, fertilization paused" """
+    """ "Winter (Nov 1 – Mar 14): water every 12 days, fertilize every 30 days, paused" """
     name = (season.get(SEASON_NAME) or "").strip() or "Season"
     span = f"{_md_text(season.get(SEASON_START))} – {_md_text(season.get(SEASON_END))}"
     return f"{name} ({span}): {_period_text(season, base, fert_enabled)}"
@@ -471,6 +476,7 @@ class _SeasonManagerMixin:
                 "count": str(len(seasons)),
                 "max": str(MAX_SEASONS),
                 "active": _season_label(current, base, fert) if current else _base_label(base, fert),
+                **_ISSUES_PLACEHOLDER,
             },
         )
 
@@ -900,7 +906,10 @@ class AdaptivePlantConfigFlow(_SeasonManagerMixin, ConfigFlow, domain=DOMAIN):
                 if v not in (None, ""):
                     self._data[k] = v
             return await self.async_step_last_watered()
-        return self.async_show_form(step_id="features", data_schema=_features_schema(self._data))
+        return self.async_show_form(
+            step_id="features", data_schema=_features_schema(self._data),
+            description_placeholders=_ISSUES_PLACEHOLDER,
+        )
 
     async def async_step_last_watered(self, user_input: dict | None = None) -> FlowResult:
         if user_input is not None:
@@ -1390,6 +1399,7 @@ class AdaptivePlantOptionsFlow(_SeasonManagerMixin, OptionsFlow):
                     step_id="settings",
                     data_schema=vol.Schema(self._settings_schema_fields()),
                     errors=errors,
+                    description_placeholders=_ISSUES_PLACEHOLDER,
                 )
 
             # Handle moisture sensor selection.
@@ -1491,6 +1501,7 @@ class AdaptivePlantOptionsFlow(_SeasonManagerMixin, OptionsFlow):
                             step_id="settings",
                             data_schema=vol.Schema(self._settings_schema_fields()),
                             errors={"base": "dry_above_wet"},
+                            description_placeholders=_ISSUES_PLACEHOLDER,
                         )
                     return await self.async_step_moisture_options(
                         {CONF_DRY_THRESHOLD: inline_dry, CONF_WET_THRESHOLD: inline_wet}
@@ -1600,6 +1611,7 @@ class AdaptivePlantOptionsFlow(_SeasonManagerMixin, OptionsFlow):
             step_id="settings",
             data_schema=vol.Schema(self._settings_schema_fields()),
             errors=errors,
+            description_placeholders=_ISSUES_PLACEHOLDER,
         )
 
     def _settings_schema_fields(self) -> dict:
