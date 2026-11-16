@@ -49,7 +49,6 @@ CONF_CUSTOM_SENSORS = "custom_sensors"
 # list is non-empty.
 CONF_ENABLE_CUSTOM_SENSORS = "enable_custom_sensors"
 CUSTOM_SENSOR_ENTITY_ID = "entity_id"
-CUSTOM_SENSOR_LABEL = "label"
 CUSTOM_SENSOR_ICON = "icon"
 CUSTOM_SENSOR_COLOR = "color"
 CUSTOM_SENSOR_POSITION = "position"
