@@ -724,7 +724,7 @@ class _SeasonManagerMixin:
         error = None
         if len(seasons) < MIN_SEASONS:
             error = "seasons_too_few"
-        elif self._season_fert_enabled() and pauses_whole_year(seasons):
+        elif pauses_whole_year(seasons):
             error = "seasons_all_paused"
         if error:
             # Menus can't show errors, so show a field-less form; submitting it
