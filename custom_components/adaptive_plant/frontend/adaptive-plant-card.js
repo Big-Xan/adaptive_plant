@@ -795,7 +795,16 @@ class AdaptivePlantCard extends HTMLElement {
   }
 
   _press(id)                { if (id) this._hass.callService('button', 'press',        { entity_id: id }); }
-  _selectOption(id, option) { this._hass.callService('select', 'select_option',         { entity_id: id, option: option }); }
+  _selectOption(id, option) {
+    var self = this;
+    var r = this._hass.callService('select', 'select_option', { entity_id: id, option: option });
+    // On failure no state changes, so the next render would match the last
+    // one and be skipped, leaving the dropdown on the unsaved value. Force a
+    // repaint so it shows the real health again.
+    if (r && typeof r.catch === 'function') {
+      r.catch(function() { self._lastRenderKey = null; self._safeUpdate(); });
+    }
+  }
   _setValue(id, value)      { this._hass.callService('text',   'set_value',             { entity_id: id, value: value }); }
 
   _waterChip(str) {
