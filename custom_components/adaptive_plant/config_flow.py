@@ -81,7 +81,7 @@ from .const import (
     STATE_SNOOZE_COUNT,
     STATE_SNOOZED_THIS_PERIOD,
 )
-from .plant import PlantData
+from .plant import PlantData, local_today
 from .seasons import (
     active_season,
     flip_next,
@@ -286,7 +286,7 @@ def _moisture_schema(defaults: dict) -> vol.Schema:
 
 
 def _resolve_date(selection: str, custom_date: str | None, interval: int) -> tuple[str | None, str]:
-    today = date.today()
+    today = local_today()
     if selection == WATERING_DATE_TODAY:
         last = today
     elif selection == WATERING_DATE_YESTERDAY:
@@ -463,7 +463,7 @@ class _SeasonManagerMixin:
             menu[f"edit_season_{i}"] = _season_label(season, base, fert)
         menu["seasons_done"] = "Save seasons"
         menu["seasons_discard"] = "Discard changes"
-        current = active_season(seasons, date.today())
+        current = active_season(seasons, local_today())
         return self.async_show_menu(
             step_id="seasons",
             menu_options=menu,
@@ -600,7 +600,7 @@ class _SeasonManagerMixin:
             return self.async_show_form(
                 step_id="add_season", data_schema=self._add_schema(values), errors=errors
             )
-        today = date.today()
+        today = local_today()
         defaults = {"start_month": today.month, "start_day": 1, "end_month": today.month, "end_day": 1}
         return self.async_show_form(step_id="add_season", data_schema=self._add_schema(defaults))
 
@@ -911,7 +911,7 @@ class AdaptivePlantConfigFlow(_SeasonManagerMixin, ConfigFlow, domain=DOMAIN):
             if selection == WATERING_DATE_MIRROR:
                 last, nxt = self._dup_dates.get("watered", (None, None))
                 self._data["_resolved_last_watered"] = last
-                self._data["_resolved_next_watering"] = nxt or date.today().isoformat()
+                self._data["_resolved_next_watering"] = nxt or local_today().isoformat()
                 return await self._after_watering()
             last, nxt = _resolve_date(selection, None, self._data.get(OPT_WATERING_INTERVAL, DEFAULT_WATERING_INTERVAL))
             self._data["_resolved_last_watered"] = last
@@ -970,7 +970,7 @@ class AdaptivePlantConfigFlow(_SeasonManagerMixin, ConfigFlow, domain=DOMAIN):
             if selection == WATERING_DATE_MIRROR:
                 last, nxt = self._dup_dates.get("fertilized", (None, None))
                 self._data["_resolved_last_fertilized"] = last
-                self._data["_resolved_next_fertilized"] = nxt or date.today().isoformat()
+                self._data["_resolved_next_fertilized"] = nxt or local_today().isoformat()
                 return await self._after_fertilizing()
             last, nxt = _resolve_date(selection, None, self._data.get(OPT_FERTILIZATION_INTERVAL, DEFAULT_FERTILIZATION_INTERVAL))
             self._data["_resolved_last_fertilized"] = last
@@ -1020,7 +1020,7 @@ class AdaptivePlantConfigFlow(_SeasonManagerMixin, ConfigFlow, domain=DOMAIN):
                     self._data[CONF_RESOLVED_LAST_REPOTTED] = src_repot
                 return await self._after_repotting()
             if selection != WATERING_DATE_NEVER:
-                today = date.today()
+                today = local_today()
                 if selection == WATERING_DATE_TODAY:
                     last = today
                 else:  # yesterday
@@ -1430,7 +1430,7 @@ class AdaptivePlantOptionsFlow(_SeasonManagerMixin, OptionsFlow):
                 and old_water_interval is not None
                 and new_water_interval != old_water_interval
             ):
-                new_next = flip_next(current_opts.get(STATE_LAST_WATERED), new_water_interval, date.today())
+                new_next = flip_next(current_opts.get(STATE_LAST_WATERED), new_water_interval, local_today())
                 if new_next:
                     cleaned[STATE_NEXT_WATERING] = new_next
 
@@ -1443,7 +1443,7 @@ class AdaptivePlantOptionsFlow(_SeasonManagerMixin, OptionsFlow):
                 and old_fert_interval is not None
                 and new_fert_interval != old_fert_interval
             ):
-                new_next = flip_next(current_opts.get(STATE_LAST_FERTILIZED), new_fert_interval, date.today())
+                new_next = flip_next(current_opts.get(STATE_LAST_FERTILIZED), new_fert_interval, local_today())
                 if new_next:
                     cleaned[STATE_NEXT_FERTILIZED] = new_next
 
@@ -1463,7 +1463,7 @@ class AdaptivePlantOptionsFlow(_SeasonManagerMixin, OptionsFlow):
                 )
                 if water_changed or fert_changed:
                     table, base = write_back(
-                        _seasons_stored, _base_stored, date.today(),
+                        _seasons_stored, _base_stored, local_today(),
                         water=new_water_interval if water_changed else None,
                         fert=new_fert_interval if fert_changed else None,
                     )
@@ -1953,7 +1953,7 @@ class AdaptivePlantOptionsFlow(_SeasonManagerMixin, OptionsFlow):
         went off: an old resume date may no longer apply. An explicit edit, so a
         fresh reschedule, like an interval edit. Skipped with no last date."""
         last = self._season_setting(STATE_LAST_FERTILIZED, None)
-        new_next = rebase_fert(last, interval, table, date.today())
+        new_next = rebase_fert(last, interval, table, local_today())
         if new_next:
             self._pending_opts[STATE_NEXT_FERTILIZED] = new_next
 
@@ -1970,7 +1970,7 @@ class AdaptivePlantOptionsFlow(_SeasonManagerMixin, OptionsFlow):
             and (_has_pause(old) or _has_pause(table))
             and _pause_signature(old) != _pause_signature(table)
         ):
-            fert = period_fert(active_season(table, date.today()), base)
+            fert = period_fert(active_season(table, local_today()), base)
             if fert is not None:
                 self._season_rebase_fert(table, fert)
         self._pending_seasons_first = False
@@ -1988,7 +1988,7 @@ class AdaptivePlantOptionsFlow(_SeasonManagerMixin, OptionsFlow):
         warns about this)."""
         entry = self._config_entry
         table, base = self._season_initial()
-        today = date.today()
+        today = local_today()
         current = active_season(table, today)
         fert = self._season_fert_enabled()
 
@@ -2309,7 +2309,7 @@ class AdaptivePlantOptionsFlow(_SeasonManagerMixin, OptionsFlow):
             if selection == WATERING_DATE_CUSTOM:
                 return await self.async_step_fertilized_init_custom()
             if selection != WATERING_DATE_NEVER:
-                today = date.today()
+                today = local_today()
                 if selection == WATERING_DATE_TODAY:
                     last = today
                 else:  # yesterday
@@ -2378,7 +2378,7 @@ class AdaptivePlantOptionsFlow(_SeasonManagerMixin, OptionsFlow):
             if selection == WATERING_DATE_CUSTOM:
                 return await self.async_step_repotted_init_custom()
             if selection != WATERING_DATE_NEVER:
-                today = date.today()
+                today = local_today()
                 if selection == WATERING_DATE_TODAY:
                     last = today
                 else:  # yesterday

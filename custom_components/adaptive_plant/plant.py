@@ -13,6 +13,7 @@ from homeassistant.components.persistent_notification import async_create as pn_
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
+from homeassistant.util import dt as dt_util
 
 from .const import (
     CONF_AREA,
@@ -84,6 +85,14 @@ from .seasons import (
 _LOGGER = logging.getLogger(__name__)
 
 
+def local_today() -> date:
+    """Today's date in Home Assistant's configured time zone.
+
+    Not date.today(): that follows the operating system's time zone, which on
+    Container and Core installs without a TZ setting is UTC, so dates would
+    roll over at UTC midnight instead of the user's.
+    """
+    return dt_util.now().date()
 
 
 class PlantData:
@@ -229,7 +238,7 @@ class PlantData:
         when seasons are off or the base schedule is in effect."""
         if not self.seasons_active:
             return None
-        season = active_season(self.seasons, date.today())
+        season = active_season(self.seasons, local_today())
         if season is None:
             return None
         return (season.get(SEASON_NAME) or "").strip() or season.get(SEASON_START)
@@ -386,7 +395,7 @@ class PlantData:
         if not self.next_watering:
             return None
         try:
-            delta = date.fromisoformat(self.next_watering) - date.today()
+            delta = date.fromisoformat(self.next_watering) - local_today()
             return delta.days
         except ValueError:
             return None
@@ -396,7 +405,7 @@ class PlantData:
         if not self.next_fertilized:
             return None
         try:
-            delta = date.fromisoformat(self.next_fertilized) - date.today()
+            delta = date.fromisoformat(self.next_fertilized) - local_today()
             return delta.days
         except ValueError:
             return None
@@ -408,7 +417,7 @@ class PlantData:
         if not health_updated_str:
             return True
         try:
-            days_since = (date.today() - date.fromisoformat(health_updated_str)).days
+            days_since = (local_today() - date.fromisoformat(health_updated_str)).days
             return days_since >= self.health_prompt_interval
         except ValueError:
             return True
@@ -540,7 +549,7 @@ class PlantData:
 
     async def apply_seasons(self) -> bool:
         """Apply the active season now. Returns True if anything was persisted."""
-        updates = self._season_updates(date.today())
+        updates = self._season_updates(local_today())
         if not updates:
             return False
         await self._persist(updates)
@@ -553,7 +562,7 @@ class PlantData:
         # 00:05 rollover on a boundary day would otherwise adapt the old season's
         # interval and write it back into the new season.
         await self.apply_seasons()
-        today = date.today()
+        today = local_today()
         today_str = today.isoformat()
         interval = self.watering_interval
         early_count = self.early_watering_count
@@ -646,11 +655,11 @@ class PlantData:
         # sensor owns the date — this bows out like mark_watered / the fert-sync block.
         days = int(days)
         await self.apply_seasons()
-        updates: dict = self._interval_updates(date.today(), water=days)
+        updates: dict = self._interval_updates(local_today(), water=days)
         if days != self.watering_interval and not self.moisture_sensor:
             # Never earlier than today, as on a change of season: a shorter
             # interval makes the plant due today, not several days overdue.
-            new_next = flip_next(self.last_watered, days, date.today())
+            new_next = flip_next(self.last_watered, days, local_today())
             if new_next:
                 updates[STATE_NEXT_WATERING] = new_next
         await self._persist(updates)
@@ -662,7 +671,7 @@ class PlantData:
         Snooze when only fertilization is due must not touch the watering date or
         the adaptive snooze streak counter.
         """
-        today = date.today()
+        today = local_today()
         updates: dict = {}
 
         # Snooze watering only if it is due or overdue
@@ -715,19 +724,19 @@ class PlantData:
             return
         await self._persist({
             STATE_HEALTH: value,
-            STATE_HEALTH_LAST_UPDATED: date.today().isoformat(),
+            STATE_HEALTH_LAST_UPDATED: local_today().isoformat(),
         })
 
     async def confirm_health(self) -> None:
         """Reset the health check-in clock without changing the health value."""
         await self._persist({
-            STATE_HEALTH_LAST_UPDATED: date.today().isoformat(),
+            STATE_HEALTH_LAST_UPDATED: local_today().isoformat(),
         })
 
     # ── Fertilization ────────────────────────────────────────────────────────────
 
     async def mark_fertilized(self) -> None:
-        today = date.today()
+        today = local_today()
         new_next = self._fert_date(today + timedelta(days=self.fertilization_interval), today)
         await self._persist({
             STATE_LAST_FERTILIZED: today.isoformat(),
@@ -741,12 +750,12 @@ class PlantData:
         # every plant (mark_fertilized has no moisture bow-out, unlike watering).
         days = int(days)
         await self.apply_seasons()
-        updates: dict = self._interval_updates(date.today(), fert=days)
+        updates: dict = self._interval_updates(local_today(), fert=days)
         if days != self.fertilization_interval:
-            new_next = flip_next(self.last_fertilized, days, date.today())
+            new_next = flip_next(self.last_fertilized, days, local_today())
             if new_next:
                 updates[STATE_NEXT_FERTILIZED] = self._fert_date(
-                    date.fromisoformat(new_next), date.today()
+                    date.fromisoformat(new_next), local_today()
                 )
         await self._persist(updates)
 
@@ -769,7 +778,7 @@ class PlantData:
         leaving the text in place to correct. Clears the input field after
         stamping so it doesn't linger as a stale suggestion.
         """
-        today = date.today()
+        today = local_today()
         raw = self.repotted_date_input.strip()
         stamp: str
         if raw:
@@ -824,7 +833,7 @@ class PlantData:
         except ValueError:
             return
 
-        today = date.today()
+        today = local_today()
         if next_date > today:
             # Not yet due — nothing to fix
             return
@@ -852,7 +861,7 @@ class PlantData:
             await self._persist({STATE_NEXT_WATERING: new_next})
 
     async def daily_rollover(self) -> None:
-        today = date.today()
+        today = local_today()
         # Track whether anything was actually persisted this rollover. _persist
         # notifies listeners on real change; we only need a trailing notify
         # when nothing changed but the date rolled over, so date-derived
@@ -987,7 +996,7 @@ class PlantData:
 
         dry = self.dry_threshold
         wet = self.wet_threshold
-        today = date.today()
+        today = local_today()
         crossed_wet = (
             wet is not None and previous is not None
             and previous <= wet < moisture

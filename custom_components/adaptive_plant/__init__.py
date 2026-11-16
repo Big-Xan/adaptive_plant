@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import logging
 import shutil
-from datetime import date
 from pathlib import Path
 
 from homeassistant.config_entries import ConfigEntry
@@ -32,7 +31,7 @@ from .const import (
     STATE_NEXT_FERTILIZED,
     STATE_NEXT_WATERING,
 )
-from .plant import PlantData
+from .plant import PlantData, local_today
 from .sensor import moisture_entity_wanted
 
 _LOGGER = logging.getLogger(__name__)
@@ -144,7 +143,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         seeded = True
 
     if STATE_HEALTH_LAST_UPDATED not in initial_options:
-        initial_options[STATE_HEALTH_LAST_UPDATED] = date.today().isoformat()
+        initial_options[STATE_HEALTH_LAST_UPDATED] = local_today().isoformat()
         seeded = True
 
     current_health = initial_options.get(STATE_HEALTH)
