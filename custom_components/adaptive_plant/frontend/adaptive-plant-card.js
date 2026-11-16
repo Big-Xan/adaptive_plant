@@ -1443,13 +1443,16 @@ class AdaptivePlantCardEditor extends HTMLElement {
       '</div></div>' +
       '<div class="field-group"><div class="field-label">Today tab</div><div class="toggle-row">' +
         this._toggle('Show "Hold to Mark All Tasks Completed" button', 'show_hold_button',     this._get('show_hold_button',     true))  +
+        // Pinning only matters while the hold button is shown.
+        (this._get('show_hold_button', true) !== false
+          ? this._toggle('Pin hold button to bottom', 'pin_hold_button', this._get('pin_hold_button', false))
+          : '') +
         this._toggle('Show completed tasks',                          'show_completed_today', this._get('show_completed_today', false)) +
       '</div>' +
         '<div class="field-hint">The hold button only appears when there is something to complete. Completed tasks are listed under a <em>Completed Today</em> section below your active tasks, with display-only checks.</div>' +
       '</div>' +
       '<div class="field-group"><div class="field-label">Card appearance</div><div class="toggle-row">' +
         this._toggle('Show card background',      'show_background',  this._get('show_background',  true))  +
-        this._toggle('Pin hold button to bottom', 'pin_hold_button',  this._get('pin_hold_button',  false)) +
       '</div>' +
         '<div class="field-row" style="margin-top:6px;">' +
           this._colorField('Card background color', 'card_background_color', this._get('card_background_color', '#1c1c1e')) +
