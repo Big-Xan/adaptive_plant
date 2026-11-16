@@ -1181,6 +1181,15 @@ class AdaptivePlantOptionsFlow(_SeasonManagerMixin, OptionsFlow):
         # cleared thresholds, "never" dates). _save() pops these off the fresh
         # base, but only when the flow didn't also set them this run.
         self._flow_removed_keys: set[str] = set()
+        # Uploaded images are never deleted mid-flow: the old file is only
+        # retired here and deleted by _save() once the new options are written,
+        # so closing the flow at any later step (moisture thresholds, a
+        # first-enable prompt, the seasons-off picker) keeps the image the entry
+        # still points to. _flow_upload is a file uploaded in this flow; it is
+        # deleted if the flow closes without saving (async_remove).
+        self._retired_images: set[str] = set()
+        self._flow_upload: str | None = None
+        self._saved: bool = False
         # Flags set when a first-enable sub-flow is in progress
         self._pending_image_first: bool = False
         self._pending_latin_first: bool = False
@@ -1232,6 +1241,7 @@ class AdaptivePlantOptionsFlow(_SeasonManagerMixin, OptionsFlow):
             # _pending_opts, so a re-shown form (e.g. after an image error) never
             # carries stale removals into the eventual save.
             self._flow_removed_keys = set()
+            self._retired_images = set()
             # Detect label-clear intent up front (blank, whitespace-only, or
             # the literal word "null"). The cleanup loop further down only
             # catches blanks AND only runs on the no-moisture branch, so we
@@ -1349,9 +1359,12 @@ class AdaptivePlantOptionsFlow(_SeasonManagerMixin, OptionsFlow):
                 upload_file_id = user_input.get(CONF_IMAGE_UPLOAD)
                 if upload_file_id:
                     try:
-                        cleaned[CONF_IMAGE_PATH] = await _persist_uploaded_image(
-                            self.hass, upload_file_id, current_image_path
+                        # Replaces only an upload made earlier in this flow; the
+                        # entry's current image is retired, not deleted.
+                        cleaned[CONF_IMAGE_PATH] = self._flow_upload = await _persist_uploaded_image(
+                            self.hass, upload_file_id, self._flow_upload
                         )
+                        self._retired_images.add(current_image_path)
                     except Exception:  # noqa: BLE001
                         _LOGGER.exception("Failed to process uploaded plant image")
                         errors[CONF_IMAGE_UPLOAD] = "invalid_image"
@@ -1359,10 +1372,8 @@ class AdaptivePlantOptionsFlow(_SeasonManagerMixin, OptionsFlow):
                     raw_image = user_input.get(CONF_IMAGE_PATH, "")
                     new_path = raw_image.strip() if raw_image else ""
                     cleaned[CONF_IMAGE_PATH] = new_path
-                    if new_path != current_image_path and is_owned_image_path(current_image_path):
-                        await self.hass.async_add_executor_job(
-                            _delete_owned_image, self.hass, current_image_path
-                        )
+                    if new_path != current_image_path:
+                        self._retired_images.add(current_image_path)
             else:
                 # Image disabled — tombstone the path (mirroring CONF_LABEL /
                 # CONF_LATIN_NAME) rather than popping. We also delete the owned
@@ -1370,11 +1381,9 @@ class AdaptivePlantOptionsFlow(_SeasonManagerMixin, OptionsFlow):
                 # that resurfaces as a broken image if the user re-enables
                 # without re-uploading. The "" tombstone is preserved through
                 # `merged` by _skip_clear and makes image_path resolve to None.
+                # The owned file is deleted by _save(), once this is written.
                 cleaned[CONF_IMAGE_PATH] = ""
-                if is_owned_image_path(current_image_path):
-                    await self.hass.async_add_executor_job(
-                        _delete_owned_image, self.hass, current_image_path
-                    )
+                self._retired_images.add(current_image_path)
 
             if errors:
                 return self.async_show_form(
@@ -1859,7 +1868,21 @@ class AdaptivePlantOptionsFlow(_SeasonManagerMixin, OptionsFlow):
         for key in self._flow_removed_keys:
             if key not in self._pending_opts:
                 final.pop(key, None)
+        # Images replaced or switched off in this flow are deleted now, never
+        # earlier: only owned files, and never the one the entry keeps using.
+        kept = final.get(CONF_IMAGE_PATH, self._config_entry.data.get(CONF_IMAGE_PATH))
+        for path in self._retired_images | {self._flow_upload}:
+            if is_owned_image_path(path) and path != kept:
+                self.hass.async_add_executor_job(_delete_owned_image, self.hass, path)
+        self._saved = True
         return self.async_create_entry(title="", data=final)
+
+    @callback
+    def async_remove(self) -> None:
+        """The flow closed. An image uploaded in it but never saved is deleted;
+        the entry's own image was never touched (see _retired_images)."""
+        if not self._saved and is_owned_image_path(self._flow_upload):
+            self.hass.async_add_executor_job(_delete_owned_image, self.hass, self._flow_upload)
 
     # ── First-enable sub-flow dispatcher ──────────────────────────────────────
 
@@ -2230,16 +2253,16 @@ class AdaptivePlantOptionsFlow(_SeasonManagerMixin, OptionsFlow):
             path = user_input.get(CONF_IMAGE_PATH, "").strip()
             if file_id:
                 # Upload wins over a typed path, matching the setup wizard and
-                # the steady-state options form. previous_path is read from the
-                # live entry so a prior owned file is cleaned up; on a genuine
-                # first-enable it is normally absent.
+                # the steady-state options form. A prior owned file on the live
+                # entry is retired for _save() to delete; on a genuine first
+                # enable it is normally absent.
                 entry = self._config_entry
-                previous_path = entry.options.get(
+                self._retired_images.add(entry.options.get(
                     CONF_IMAGE_PATH, entry.data.get(CONF_IMAGE_PATH)
-                )
+                ))
                 try:
-                    self._pending_opts[CONF_IMAGE_PATH] = await _persist_uploaded_image(
-                        self.hass, file_id, previous_path
+                    self._pending_opts[CONF_IMAGE_PATH] = self._flow_upload = await _persist_uploaded_image(
+                        self.hass, file_id, self._flow_upload
                     )
                 except Exception:  # noqa: BLE001
                     _LOGGER.exception("Failed to process uploaded plant image")
