@@ -2,10 +2,10 @@
 
 A fully local, event-driven Home Assistant custom integration for tracking and managing your plants — with intelligent adaptive watering logic that learns your plants' needs over time. Includes a highly customizable companion Lovelace card with a full visual editor and a task reminder blueprint for Companion App notifications.
 
-![Adaptive Plant Card](https://github.com/user-attachments/assets/8e650e79-d9d7-4fca-8f5d-587dfd5d9724)
+<img width="2400" height="1260" alt="Adaptive Plant Header(5)" src="https://github.com/user-attachments/assets/ecf3ffb3-d45f-454e-9214-cee3669e389e" />
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
-![HA Version](https://img.shields.io/badge/HA-2024.6%2B-blue)
+![HA Version](https://img.shields.io/badge/HA-2024.7%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ---
@@ -26,9 +26,9 @@ A fully local, event-driven Home Assistant custom integration for tracking and m
 - Track watering intervals per plant
 - **Adaptive & customizable interval reduction** — if you consistently water early, the interval automatically shortens
 - **Adaptive & customizable interval extension** — if you consistently snooze watering, the interval automatically lengthens
-- Snooze watering by one day without resetting the period
+- Snooze watering without resetting the period: a task due today moves to tomorrow, and an overdue task also moves to tomorrow (not one day past its old due date)
 - Sensors show human-readable status: `Today`, `In 3 Days`, `2 Days Overdue`
-- **Changing an interval reschedules immediately** — editing a watering or fertilization interval (via the number entity or Configure) recomputes the next due date on the spot (last done + new interval). Moisture-sensor plants keep their watering date sensor-managed; fertilization reschedules for every plant.
+- **Changing an interval reschedules immediately** — editing a watering or fertilization interval (via the number entity or Configure) recomputes the next due date on the spot: last done + new interval, but never earlier than today. Shortening an interval can make a task due today; it never makes it overdue. Moisture-sensor plants keep their watering date sensor-managed; fertilization reschedules for every plant.
 
 ### 🌿 Plant Health
 - Health select entity: `Excellent`, `Good`, `Poor`, `Sick`
@@ -40,17 +40,19 @@ A fully local, event-driven Home Assistant custom integration for tracking and m
 - Same sensor pattern as watering
 - Snoozing watering also snoozes fertilization if it is due the same day
 - **Sync to watering day (optional)** — set a sync window of `1`–`6` days and marking a plant watered will snap an upcoming fertilization that falls within that window onto the same day, so you water and fertilize in one go. Off by default (`0`, fully independent intervals). It never delays a fertilization that's already due or overdue, and is skipped for plants with moisture-sensors enabled. Set it under **Fertilization settings** (at setup or via Configure) — keep it below your watering interval.
-- Can be enabled on any plant after setup via Configure — you'll be prompted for the last fertilized date when first enabled
-- When enabling fertilization on an existing plant via Configure, reload the
-entry/plant afterwards (**Settings → Devices & Services → Adaptive Plant →⋮ → Reload**) to create the fertilization entities. Once reloaded, open Configure again to set your desired interval — the Fertilization interval field appears once fertilization is active. Changing the interval takes effect immediately: the next fertilization is rescheduled from the last fertilized date you entered when enabling.
+- Can be enabled on any plant after setup via Configure — you'll be prompted for the last fertilized date when first enabled. The plant reloads automatically to create the fertilization entities; no manual reload needed.
+- The first schedule uses the fertilization interval you entered in the setup wizard (or 30 days if you never set one). To change it, open Configure again — the Fertilization interval field appears once fertilization is active. Changing the interval takes effect immediately: the next fertilization is rescheduled from the last fertilized date.
 
 ### 💧 Moisture Sensor Integration (optional)
 - Link any existing sensor entity
-- Automatically reschedule watering if soil is dry
-- Automatically mark as watered if soil is saturated
+- Automatically reschedule watering to today when the reading is **at or below** the dry threshold
+- Automatically mark as watered when the reading **crosses above** the wet threshold (a rise from at-or-below the threshold). Soil that simply stays wet doesn't re-mark the plant every day.
+- If the plant is due but the soil is still moist, the watering moves to tomorrow (at most once a day), so it doesn't sit overdue while the soil is wet. A date that's still in the future is left alone, so the countdown keeps running.
 - Adaptive watering logic is disabled for moisture sensor plants — the sensor drives watering decisions, the schedule acts as a fallback only
 - Moisture sensor, dry threshold, and wet threshold can all be added, changed, or removed after setup via Configure. Use the Enable moisture sensor toggle to remove a sensor — toggling off clears the sensor and both thresholds.
 - The live moisture % can be shown as a chip on any card tab — Overview, Today, and Upcoming — instead of the watering-days countdown (see `show_moisture_in_overview` / `show_moisture_in_today` / `show_moisture_in_upcoming` in the card config below).
+
+> **Note:** On moisture-sensor plants, **Last watered** can be a watering the sensor *detected* (a wet-threshold crossing) rather than a button press — any rise across the wet threshold counts, even a small one (e.g. 69% → 71% with a 70% threshold).
 
 > **Tip:** To remove a moisture sensor after setup, open Configure, toggle Enable moisture sensor off, and save. (The moisture sensor uses Home Assistant's entity picker, which can't be cleared by deleting the value — the toggle is the supported way to remove it.)
 
@@ -60,7 +62,7 @@ entry/plant afterwards (**Settings → Devices & Services → Adaptive Plant →
 - **Repotted on** text field — enter a date in `YYYY-MM-DD` format (e.g. `2026-04-01`) before pressing Mark repotted to record a past date instead of today. The field clears automatically after the button is pressed.
 - Can be enabled on any plant after setup via Configure — you'll be prompted for the last repotted date when first enabled
 
-> **Note:** The **Repotted on** field accepts dates in `YYYY-MM-DD` format only (e.g. `2026-04-01`). Invalid entries are ignored and Mark repotted will fall back to today's date.
+> **Note:** The **Repotted on** field accepts dates in `YYYY-MM-DD` format only (e.g. `2026-04-01`). Leave it blank to record today. An invalid date, or a date in the future, shows an error instead of being recorded — nothing is stamped and what you typed stays in the field so you can fix it.
 
 ### 🖼️ Plant Image (optional)
 Give a plant a photo to display on dashboard cards. There are two ways to do it — pick whichever you prefer, in the setup wizard or later via Configure:
@@ -72,6 +74,8 @@ Give a plant a photo to display on dashboard cards. There are two ways to do it 
 > **Example image pathway (without folder, uploaded directly into `/www/`) for card config:**  `/local/monstera.png`
 
 If you supply both an upload and a path at the same time, the **upload wins**.
+
+- In Configure, a changed path must start with `/local/`. Your current photo is kept until you save — closing the dialog without saving leaves the old image in place.
 
 - Image **size** (px) and **shape** (circle / square, softly rounded) are configurable on the companion card via the visual editor or YAML. Set `image_size: 0` to hide plant photos entirely for clean text-only rows.
 
@@ -86,6 +90,7 @@ If you supply both an upload and a path at the same time, the **upload wins**.
 
 ### 📝 Notes (optional)
 - Free-form text field stored per plant - directly editable via the companion card.
+- Up to 255 characters (Home Assistant's limit for an entity state)
 - Can be enabled or disabled at any time via Configure — no restart required
 
 ### 📖 Care Instructions (optional)
@@ -97,6 +102,39 @@ If you supply both an upload and a path at the same time, the **upload wins**.
 
 > **Note:** Care instructions are read-only on the card by design — they're a reference you set in Configure, not an editable field on the dashboard. Clearing the text while the feature stays enabled simply hides the Care section.
 
+### 📡 Linked Sensors (optional)
+Show readings from any sensor you already have — temperature, humidity, light, soil fertility — right on the plant's row in the companion card.
+
+- Add them under **Configure → Linked sensors → Add a sensor** (or switch on *Linked sensors* in Plant settings). Up to 10 per plant.
+- Each sensor appears as a chip on the plant's Overview row and as a row in its expanded detail, updating live. The row is labeled with the sensor's own name without its device's name in front (e.g. *Humidity* rather than *Bedroom Thermometer Humidity*); long names are shortened with an ellipsis so the reading stays on one line.
+- Choose an icon (any MDI icon or emoji; defaults to the sensor's own icon), an optional hex color, whether the chip sits **before** or **after** the watering / fertilization chips, and its order.
+- **Manage linked sensors** lets you edit, reorder, or remove each one.
+- Linked sensors are display-only — they don't affect watering logic (that's what the moisture sensor is for).
+
+> **Note:** A linked sensor is stored by its entity ID. If you rename that entity's ID later, the chip shows `—`; link the sensor again under Configure.
+
+<img width="960" height="1270" alt="linked-sensors-overview" src="https://github.com/user-attachments/assets/34405f25-2d62-44be-9db9-1985938c4571" />
+
+<img width="755" height="1025" alt="image" src="https://github.com/user-attachments/assets/290c42fa-58fc-4036-b0f5-82899a456e10" />
+
+### 🗓️ Seasonal Schedules (Experimental)
+Give a plant a different watering (and fertilization) schedule for parts of the year — water less in winter, more in summer, or pause feeding while the plant is dormant.
+
+- Turn on **Seasonal watering schedule** in the setup wizard or in Plant settings. The plant's current intervals become its **base schedule**, which applies to any day/period that falls outside of seasons.
+- Add up to 8 seasons. Each has a name (optional), a start and end date (both included), and its own intervals. Seasons can run across New Year (e.g. November 1 – March 14), but can't overlap.
+- A new season starts **from** the base schedule or another season, plus or minus a number of days for watering and fertilization. Once saved, each season keeps its own numbers.
+- **Pause fertilization** during a season: nothing comes due inside it, and fertilization comes due on the first day after it that isn't paused. Fertilization can't be paused for the whole year.
+- The base schedule and every season **learn separately**: early waterings and snoozes adjust whichever period is in effect.
+- Changes in the season manager are kept only when you choose **Save seasons**; **Discard changes** leaves the plant as it was.
+- The season in effect today shows as the `active_season` attribute on the plant's **Next watering** sensor.
+- Turning seasons off (Plant settings) asks which schedule to keep, then deletes the base schedule and all seasons.
+
+> **Experimental:** please report anything odd on the [issue tracker](https://github.com/Big-Xan/adaptive_plant/issues).
+
+<img width="672" height="730" alt="image" src="https://github.com/user-attachments/assets/8a0fe78c-ec0c-46e9-b423-4f0fba3cad27" />
+
+<img width="1210" height="1157" alt="image" src="https://github.com/user-attachments/assets/3e67b689-bc35-48cc-a19c-d2b585a6c5a0" />
+
 ### 🏠 Area & Label Support
 - Assign each plant to a Home Assistant area during setup
 - The area can be changed — or cleared — at any time after setup from the plant's edit device page (pencil icon on integration page).
@@ -107,10 +145,11 @@ If you supply both an upload and a path at the same time, the **upload wins**.
 ### 🌱 Duplicate a Plant
 Do you also propagate your plants? When you already have **at least one plant already set up**, adding a new one opens a small menu: create a plant from scratch, or **duplicate an existing plant**.
 
-- Duplicating copies the plant's care *recipe*: watering interval (the current, adapted value), adaptive thresholds, enabled features, fertilization settings, latin name, care instructions, area, and label
+- Duplicating copies the plant's care *recipe*: watering interval (the current, adapted value), adaptive thresholds, enabled features, fertilization settings, seasonal schedule, latin name, care instructions, area, and label
 - The lived history starts fresh: health resets to Good with a new check-in clock, adaptive counters at zero, notes empty
 - In each "last watered / fertilized / repotted" date step you can pick **Mirror parent plant** to carry the parent's dates over verbatim instead of entering your own
 - A moisture sensor and its thresholds are **never copied** — two plants shouldn't share one probe. Link a sensor on the duplicate afterwards via Configure.
+- Linked sensors aren't copied either; add them to the duplicate under Configure.
 - An *uploaded* photo **isn't** shared between plants — the duplicate keeps the image feature enabled so you can upload its own. A hand-placed `/local/` path **is** copied as-is; shared files are safe and never touched by cleanup.
 - Duplicates land in the parent's *current* area (as shown on its device page).
 
@@ -138,15 +177,20 @@ Do you also propagate your plants? When you already have **at least one plant al
 3. If you already have plants set up, a menu appears first: **Add a plant** (full wizard) or **Duplicate an existing plant** (see [Duplicate a Plant](#-duplicate-a-plant))
 4. Follow the setup wizard:
    - Plant name, area, optional label, watering interval, adaptive thresholds
-   - Optional features (fertilization, notes, latin name, image, repotting, moisture sensor)
+   - Optional features (fertilization, notes, latin name, image, repotting, seasonal schedule, moisture sensor)
    - Last watered date (Today / Yesterday / Custom / Haven't yet — plus Mirror parent plant when duplicating)
    - Last fertilized date (same options) *(if fertilization enabled)*
    - Last repotted date (same options) *(if repotting enabled)*
    - Latin name *(if latin name enabled)*
    - Image — upload a photo or enter a `/local/` path *(if image enabled)*
    - Moisture thresholds *(if a sensor was selected)*
+   - Seasons *(if seasonal schedule enabled)*
 
-To edit any setting after setup, go to **Settings → Devices & Services → Adaptive Plant → Configure**.
+To edit any setting after setup, go to **Settings → Devices & Services → Adaptive Plant → Configure**. Once a plant has linked sensors or seasons, Configure opens a small menu: **Plant settings**, **Linked sensors**, and **Seasonal schedule**.
+
+<img width="1057" height="500" alt="image" src="https://github.com/user-attachments/assets/e6553047-c6f1-4e7d-8afa-c0bb6ac175cc" />
+
+Turning on fertilization, notes, latin name, repotting, or a moisture sensor after setup reloads the plant automatically so its new entities appear — no manual reload or restart.
 
 > **Tip**: To remove a label, latin name, or image after setup, open Configure, clear the field (or, for an uploaded image, disable the image option), and save.
 
@@ -159,14 +203,14 @@ Each plant creates a device with the following entities:
 | Entity | Type | Description |
 |--------|------|-------------|
 | Last watered | Sensor | Date of last watering |
-| Next watering | Sensor | Scheduled next watering date |
+| Next watering | Sensor | Scheduled next watering date (`active_season` attribute shows the season in effect, if any) |
 | Days until watering | Sensor | Human-readable countdown |
 | Early watering count | Sensor | Diagnostic — consecutive periods watered early |
 | Consecutive periods snoozed | Sensor | Diagnostic — consecutive periods snoozed before watering |
 | Health | Select | Excellent / Good / Poor / Sick |
 | Watering interval | Number | Editable interval in days |
 | Mark watered | Button | Records watering, applies adaptive logic |
-| Snooze today's tasks | Button | Delays watering (and fertilization if also due) by 1 day |
+| Snooze today's tasks | Button | Moves a due or overdue watering (and fertilization, if also due) to tomorrow |
 | Confirm health | Button | Resets the health check-in clock without changing the health value |
 | Last fertilized | Sensor | *(if fertilization enabled)* |
 | Next fertilization | Sensor | *(if fertilization enabled)* |
@@ -174,11 +218,11 @@ Each plant creates a device with the following entities:
 | Fertilization interval | Number | *(if fertilization enabled)* |
 | Mark fertilized | Button | *(if fertilization enabled)* |
 | Last repotted | Sensor | *(if repotting enabled)* |
-| Mark repotted | Button | *(if repotting enabled)* Stamps today's date, or the date in the Repotted on field if set |
-| Repotted on | Text | *(if repotting enabled)* Enter a past date in `YYYY-MM-DD` format before pressing Mark repotted |
-| Notes | Text | *(if notes enabled)* |
+| Mark repotted | Button | *(if repotting enabled)* Stamps today's date, or the date in the Repotted on field if set (invalid or future dates show an error) |
+| Repotted on | Text | *(if repotting enabled)* Enter a past date (or today) in `YYYY-MM-DD` format before pressing Mark repotted |
+| Notes | Text | *(if notes enabled)* Up to 255 characters |
 | Latin name | Text | *(if latin name enabled)* |
-| Soil moisture | Sensor | Diagnostic — live reading from linked moisture sensor *(if moisture sensor configured)* |
+| Soil moisture | Sensor | Diagnostic — live reading from the moisture sensor *(only for plants with a moisture sensor; plants that already had this entity keep it)* |
 
 ---
 
@@ -192,6 +236,8 @@ If you press **Mark Watered** before the scheduled date, an early watering count
 If you press **Snooze today's tasks** when a watering is due, a snooze streak counter increments and the task is pushed to tomorrow. Once it the snooze count reaches the configured threshold across consecutive periods, the watering interval increases by 1 day (maximum 365). The streak resets if you water without snoozing.
 > **Example:** If you notice a plant that has a 7 day watering interval is not in need of watering on its due date -> you snooze the task until the soil is adequately dry -> if this pattern repeats across enough consecutive watering periods to hit the configured threshold, the watering interval is extended by a day to better match the plant's actual needs.
 
+With a seasonal schedule, this learning applies to whichever period (base schedule or season) is in effect on the day you water or snooze.
+
 > **Note:** Snoozing and then watering the same plant on the same day will count that period as both early and snoozed. This is a known edge case and _may_ be addressed in a future release. In the meantime.... don't do that? Why would you do that?
 
 ---
@@ -204,24 +250,28 @@ This repo includes a companion Lovelace card (`adaptive-plant-card.js`) with a f
 
 The card is bundled with the integration and registered automatically as a Lovelace resource when the integration loads — no manual installation required. The integration registers a single HTTP endpoint to serve the card file, which is what enables this automatic registration.
 
-Hard refresh your browser (Ctrl+Shift+R / Cmd+Shift+R) after installing or updating.
+Hard refresh your browser (Ctrl+Shift+R / Cmd+Shift+R) after installing or updating. If the old card still shows (common in the Companion App), clear the frontend cache: in the Companion App use **Reset frontend cache** in the app's settings; in a browser, clear the site data for your Home Assistant address.
 
 > **Upgrading from v1.1.0 or earlier?** Previous versions required manually copying `www/adaptive-plant-card.js` to your HA `config/www/` directory and adding it as a resource under **Settings → Dashboards → Resources**. Remove that old resource entry to avoid the card loading twice.
 
 ### Card Features
 
-- **Today tab** — plants due or overdue, grouped by area and label. Mark watered, mark fertilized, or snooze directly from the card. Hold the button at the bottom to complete all tasks at once. The snooze button remains visible until all of a plant's tasks for the day are resolved.
+- **Today tab** — plants due or overdue, grouped by area and label, in the same order as the Overview. Mark watered, mark fertilized, or snooze directly from the card — presses respond instantly, and a finished task turns into a check right where it was instead of the list jumping around. Hold the button at the bottom to complete all tasks at once (or hide that button). The snooze button remains visible until all of a plant's tasks for the day are resolved.
+- **Completed Today** *(optional)* — plants you've finished for the day are listed under the active tasks with display-only checks. When nothing's left to do, the tab says **All caught up!** (as a large message if nothing was completed today either).
 - **Upcoming tab** — future waterings and fertilizations with a configurable day cutoff. Plants with both tasks due on the same day appear as a single combined row. Mark tasks early directly from the card.
 - **Overview tab** — all plants grouped by area and label, with a configurable sort order (alphabetical, health, or days until watering). Expand any plant to see next watering/fertilization dates, edit health, add notes, confirm health check-in, and mark tasks complete.
 - **Labels** — plants with a label assigned are grouped under a sublabel header within their area, across all tabs
 - **Health ring** — colored ring around each plant avatar indicating health status, configurable per tab
+- **Overview task icons** — instead of a generic dot, an Overview row shows a red water, fertilize, or heart icon for each task that's due (watering, fertilization, or an overdue health check-in). The red follows `overdue_color`.
+- **Linked sensors** — chips on the Overview row and rows in the expanded detail, updated live (see [Linked Sensors](#-linked-sensors-optional)).
 - **Confirm Health button** — always visible in the Overview expanded detail. Shows a heart icon and reads "Update Due" when a health check-in is overdue. Color configurable.
 - **Repotting** — Mark Repotted button and date input in the expanded detail view on the overview tab, with customizable button color and icon. The button and input can be hidden via the visual editor or `show_repotting` — the last repotted date always remains visible.
 - **Latin / scientific name** — displays in italics below the plant name across all three tabs when enabled on a plant. Font size, color, and vertical padding all configurable.
 - **Care instructions** — free-form, read-only care notes shown in the Overview expanded detail when enabled on a plant. Supports `**bold**` and line breaks; appears automatically when a plant has care text (no card config needed).
+- **Narrow-card friendly** — in narrow columns the expanded detail's action buttons line up two per row with slightly smaller text, then switch to short labels (*Watered*, *Fertilized*, *Repotted*, *Confirm*) instead of stacking one per line.
 - **Transparent background** — option to hide the card background, compatible with frosted glass themes
-- **Pin hold button** — optionally fix the "Hold to complete all" button to the bottom of the card
-- **Full visual editor** — configure everything without writing YAML
+- **Pin hold button** — optionally fix the "Hold to Mark All Tasks Completed" button to the bottom of the card (the option is in the editor's Today tab section and shows while the hold button is on)
+- **Full visual editor** — configure everything without writing YAML. The card is also listed in the dashboard card picker.
 
 
 ### Card Configuration & Visual Editor
@@ -265,7 +315,7 @@ latin_name_color: '#9ba8b4'             # cool gray-blue, low-contrast on purpos
 latin_name_padding: 2
 ```
 
-**Visual editor as of v19.2 — every option is configurable without touching YAML. Customization is virtually endless:**
+**Visual editor (shown at v19.2; v20 adds the Today tab section below) — every option is configurable without touching YAML. Customization is virtually endless:**
 <img width="1514" height="2912" alt="BIG(28)" src="https://github.com/user-attachments/assets/0188265c-fe8d-4ae0-9198-534694ab2a46" />
 
 
@@ -273,6 +323,10 @@ latin_name_padding: 2
 
 
 > *Visual editor appears as a vertical scroll - edited together because there are so many config options the vertical image was comically long. Customize away! :)*
+
+**Today tab options (v20):**
+
+<img width="1050" height="565" alt="image" src="https://github.com/user-attachments/assets/83149699-0ae9-419e-8ffa-924b95080edf" />
 
 **For full YAML configuration reference:**
 ```yaml
@@ -291,7 +345,9 @@ overdue_color: '#e05c5c'  # color for overdue chips and indicators
 show_background: true     # set false for transparent/frosted glass themes
 card_background_color: #1c1c1e # optional — hex value shown represents the default
 tab_active_color: #7cb97e # optional — hex value shown represents the default
+show_hold_button: true    # set false to hide the "Hold to Mark All Tasks Completed" bar
 pin_hold_button: false    # set true to fix hold bar to bottom of card
+show_completed_today: false  # list today's finished plants under a Completed Today section
 image_size: 44            # plant photo / avatar size in px (0–100, default 44; 0 hides the image)
 image_shape: circle       # circle | square — square uses softly rounded corners; health ring follows
 # Moisture sensor options
@@ -469,7 +525,7 @@ without losing any data.
 
 ## Requirements
 
-- Home Assistant 2024.6 or newer
+- Home Assistant 2024.7 or newer
 - No additional Python packages required
 
 ---
