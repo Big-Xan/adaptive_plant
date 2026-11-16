@@ -81,7 +81,7 @@ from .const import (
     STATE_SNOOZE_COUNT,
     STATE_SNOOZED_THIS_PERIOD,
 )
-from .plant import next_due, PlantData
+from .plant import PlantData
 from .seasons import (
     active_season,
     flip_next,
@@ -1406,8 +1406,9 @@ class AdaptivePlantOptionsFlow(_SeasonManagerMixin, OptionsFlow):
             # runtime events (mark_watered, daily rollover, moisture handlers) —
             # so without this an interval edit saves but the card's next-due date
             # and days-until don't move until the next watering/fert event. We
-            # recompute from the last event date (shared next_due helper, same as
-            # the interval number entities) so the new cadence takes effect now.
+            # recompute from the last event date (flip_next: never earlier than
+            # today, same as the interval number entities and a change of season)
+            # so the new cadence takes effect now.
             # Written into `cleaned`, which both save paths overlay onto a fresh
             # read in _save() — so the recomputed date wins over the stored one.
             # This resets next_watering to last_watered + interval, discarding any
@@ -1429,7 +1430,7 @@ class AdaptivePlantOptionsFlow(_SeasonManagerMixin, OptionsFlow):
                 and old_water_interval is not None
                 and new_water_interval != old_water_interval
             ):
-                new_next = next_due(current_opts.get(STATE_LAST_WATERED), new_water_interval)
+                new_next = flip_next(current_opts.get(STATE_LAST_WATERED), new_water_interval, date.today())
                 if new_next:
                     cleaned[STATE_NEXT_WATERING] = new_next
 
@@ -1442,7 +1443,7 @@ class AdaptivePlantOptionsFlow(_SeasonManagerMixin, OptionsFlow):
                 and old_fert_interval is not None
                 and new_fert_interval != old_fert_interval
             ):
-                new_next = next_due(current_opts.get(STATE_LAST_FERTILIZED), new_fert_interval)
+                new_next = flip_next(current_opts.get(STATE_LAST_FERTILIZED), new_fert_interval, date.today())
                 if new_next:
                     cleaned[STATE_NEXT_FERTILIZED] = new_next
 

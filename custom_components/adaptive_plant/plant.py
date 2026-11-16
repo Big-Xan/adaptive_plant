@@ -82,18 +82,6 @@ from .seasons import (
 _LOGGER = logging.getLogger(__name__)
 
 
-def next_due(last_event: str | None, interval: int) -> str | None:
-    """Next due-date = last event date + interval days, or None if not computable.
-
-    Shared by the options flow and the interval number entities so editing an
-    interval through either door reschedules the stored next-due date the same way.
-    """
-    if not last_event:
-        return None
-    try:
-        return (date.fromisoformat(last_event) + timedelta(days=int(interval))).isoformat()
-    except (ValueError, TypeError):
-        return None
 
 
 class PlantData:
@@ -658,7 +646,9 @@ class PlantData:
         await self.apply_seasons()
         updates: dict = self._interval_updates(date.today(), water=days)
         if days != self.watering_interval and not self.moisture_sensor:
-            new_next = next_due(self.last_watered, days)
+            # Never earlier than today, as on a change of season: a shorter
+            # interval makes the plant due today, not several days overdue.
+            new_next = flip_next(self.last_watered, days, date.today())
             if new_next:
                 updates[STATE_NEXT_WATERING] = new_next
         await self._persist(updates)
@@ -751,7 +741,7 @@ class PlantData:
         await self.apply_seasons()
         updates: dict = self._interval_updates(date.today(), fert=days)
         if days != self.fertilization_interval:
-            new_next = next_due(self.last_fertilized, days)
+            new_next = flip_next(self.last_fertilized, days, date.today())
             if new_next:
                 updates[STATE_NEXT_FERTILIZED] = self._fert_date(
                     date.fromisoformat(new_next), date.today()
