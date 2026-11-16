@@ -1,4 +1,4 @@
-// Adaptive Plant Card v20.0
+// Adaptive Plant Card v20.1
 
 class AdaptivePlantCard extends HTMLElement {
   constructor() {
@@ -312,6 +312,22 @@ class AdaptivePlantCard extends HTMLElement {
     return '<span class="emoji-icon">' + this._esc(value) + '</span>';
   }
 
+  // ── Linked-sensor display name: the sensor's friendly name without its
+  //    device's name in front ("Bedroom Thermometer Humidity" -> "Humidity"),
+  //    as Home Assistant's own entity rows show it. Falls back to the full
+  //    friendly name, then the entity id. ──
+  _linkedName(hass, entityId, friendly) {
+    var name = friendly || entityId;
+    var ent  = hass.entities && hass.entities[entityId];
+    var dev  = ent && ent.device_id && hass.devices && hass.devices[ent.device_id];
+    var dn   = dev && (dev.name_by_user || dev.name);
+    if (dn && typeof name === 'string' && name.toLowerCase().indexOf(dn.toLowerCase() + ' ') === 0) {
+      var rest = name.slice(dn.length + 1).trim();
+      if (rest) return rest;
+    }
+    return name;
+  }
+
   // ── Linked-sensor rows for the Overview expanded detail (after health/repot) ──
   _customSensorRows(p) {
     var self = this;
@@ -323,7 +339,7 @@ class AdaptivePlantCard extends HTMLElement {
       var iconHtml = cs.icon ? self._renderIcon(cs.icon, color, '16px') + ' ' : '';
       var valTxt   = self._esc(String(cs.value)) + (cs.unit ? ' ' + self._esc(cs.unit) : '');
       return '<div class="detail-row custom-sensor-row">' +
-        '<span class="detail-label">' + iconHtml + self._esc(cs.name) + '</span>' +
+        '<span class="detail-label">' + iconHtml + '<span class="cs-name">' + self._esc(cs.name) + '</span></span>' +
         '<span class="detail-value">' + valTxt + '</span>' +
         '</div>';
     }).join('');
@@ -363,7 +379,7 @@ class AdaptivePlantCard extends HTMLElement {
       ' data-repotted-entity="' + p.repottedDateInputId + '"' +
       ' data-repotted-btn="' + p.btnRepotted + '"' +
       ' data-plant-id="' + p.id + '">' +
-      icon + 'Mark Repotted' +
+      icon + this._btnLabel('Mark Repotted', 'Repotted') +
     '</button>';
   }
 
@@ -570,6 +586,7 @@ class AdaptivePlantCard extends HTMLElement {
 
   _rawPlants() {
     var hass = this._hass;
+    var self = this;
     if (!hass || !hass.entities) return [];
     // Use the cached entity id list. _shouldRender keeps this fresh by
     // refreshing whenever hass.entities identity changes.
@@ -627,7 +644,7 @@ class AdaptivePlantCard extends HTMLElement {
         var srcAt = (srcSt && srcSt.attributes) ? srcSt.attributes : {};
         return {
           entityId: cs.entity_id,
-          name:     srcAt.friendly_name || cs.entity_id,
+          name:     self._linkedName(hass, cs.entity_id, srcAt.friendly_name),
           value:    avail ? srcSt.state : '\u2014',
           unit:     (avail && srcAt.unit_of_measurement) ? srcAt.unit_of_measurement : '',
           icon:     cs.icon || srcAt.icon || '',
@@ -842,14 +859,20 @@ class AdaptivePlantCard extends HTMLElement {
     return                       '<span class="done-mark" title="Fertilized today">' + this._renderIcon(this._icons.fertilize_done, this._icons.fertilize_done_color, '18px') + '</span>';
   }
 
+  // ── Action-button label: the full text, plus a short form that narrow
+  //    cards switch to via a container query (see .detail-actions CSS). ──
+  _btnLabel(long, short) {
+    return '<span class="lbl-long">' + long + '</span><span class="lbl-short">' + short + '</span>';
+  }
+
   _confirmHealthBtn(p) {
     var overdue = p.healthCheckInOverdue;
     var color   = overdue ? this._icons.health_confirm_overdue_color : this._icons.health_confirm_color;
-    var label   = overdue ? 'Update Due' : 'Confirm Health';
+    var label   = overdue ? this._btnLabel('Update Due', 'Update') : this._btnLabel('Confirm Health', 'Confirm');
     var icon    = this._renderIcon(this._icons.health_confirm, color, '15px');
     var bg      = this._alphaBg(color);
     return '<button class="detail-btn btn-health" style="color:' + color + ';background:' + bg + ';" data-entity="' + p.btnConfirmHealth + '">' +
-      icon + ' ' + label +
+      icon + label +
     '</button>';
   }
 
@@ -1168,12 +1191,12 @@ class AdaptivePlantCard extends HTMLElement {
             self._customSensorRows(p) +
             notesHtml +
             careHtml +
-            '<div class="detail-actions">' +
-              (p.btnWater         ? '<button class="detail-btn btn-water' + (p.pendWater ? ' is-pending' : '') + '" data-entity="' + p.btnWater + '" data-task="water" data-pid="' + self._esc(p.id) + '">' + self._renderIcon(self._icons.water,     self._icons.water_color,     '15px') + ' Mark Watered</button>'    : '') +
-              (p.btnFert          ? '<button class="detail-btn btn-fert'  + (p.pendFert  ? ' is-pending' : '') + '" data-entity="' + p.btnFert  + '" data-task="fert" data-pid="'  + self._esc(p.id) + '">' + self._renderIcon(self._icons.fertilize, self._icons.fertilize_color, '15px') + ' Mark Fertilized</button>' : '') +
+            '<div class="detail-actions-wrap"><div class="detail-actions">' +
+              (p.btnWater         ? '<button class="detail-btn btn-water' + (p.pendWater ? ' is-pending' : '') + '" data-entity="' + p.btnWater + '" data-task="water" data-pid="' + self._esc(p.id) + '">' + self._renderIcon(self._icons.water,     self._icons.water_color,     '15px') + self._btnLabel('Mark Watered', 'Watered') + '</button>'    : '') +
+              (p.btnFert          ? '<button class="detail-btn btn-fert'  + (p.pendFert  ? ' is-pending' : '') + '" data-entity="' + p.btnFert  + '" data-task="fert" data-pid="'  + self._esc(p.id) + '">' + self._renderIcon(self._icons.fertilize, self._icons.fertilize_color, '15px') + self._btnLabel('Mark Fertilized', 'Fertilized') + '</button>' : '') +
               (self._showRepotting && p.btnRepotted ? self._repottedBtn(p) : '') +
               (p.btnConfirmHealth ? self._confirmHealthBtn(p) : '') +
-            '</div>' +
+            '</div></div>' +
           '</div>';
           return row + detail;
         }).join('');
@@ -1320,7 +1343,9 @@ class AdaptivePlantCard extends HTMLElement {
       '.is-pending{opacity:0.45;pointer-events:none;}',
       '.plant-detail{padding:4px 16px 12px ' + detailPad + 'px;border-bottom:1px solid rgba(255,255,255,0.06);}',
       '.detail-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;font-size:13px;}',
-      '.custom-sensor-row .detail-label{display:inline-flex;align-items:center;}',
+      '.custom-sensor-row .detail-label{display:inline-flex;align-items:center;gap:5px;flex-shrink:1;min-width:0;}',
+      '.custom-sensor-row .cs-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;}',
+      '.custom-sensor-row .detail-value{white-space:nowrap;flex-shrink:0;}',
       '.detail-label{color:var(--secondary-text-color,#888);flex-shrink:0;margin-right:12px;}.detail-value{font-weight:500;}',
       '.health-select{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:var(--primary-text-color,#e5e5e5);font-size:13px;padding:4px 8px;cursor:pointer;outline:none;}',
       '.notes-section{margin:6px 0;}.notes-display{display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;font-size:13px;}',
@@ -1331,7 +1356,17 @@ class AdaptivePlantCard extends HTMLElement {
       '.notes-save{background:#7cb97e;color:#fff;}.notes-cancel{background:rgba(255,255,255,0.08);color:#aaa;}',
       '.care-section{margin:6px 0;font-size:13px;}.care-section .detail-label{display:block;margin-bottom:4px;}',
       '.care-body{font-size:13px;line-height:1.45;color:var(--primary-text-color,#e5e5e5);}',
-      '.detail-actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;}',
+      '.detail-actions-wrap{container-type:inline-size;margin-top:10px;}.detail-actions{display:flex;gap:8px;flex-wrap:wrap;}',
+      '.detail-btn .lbl-short{display:none;}',
+      // Narrow cards: two buttons per row instead of one per row, smaller text,
+      // then short labels ("Watered", "Fertilized", ...) when even that won't fit.
+      // Breakpoints are measured: two full-size pills fit side by side down to
+      // 272px, long labels at 12px fit two per row down to 240px, short labels
+      // down to 176px. Browsers without container queries keep the wrapping
+      // layout above.
+      '@container (max-width: 271px){.detail-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px;}.detail-actions .detail-btn{justify-content:center;padding:7px 8px;font-size:12px;min-width:0;white-space:nowrap;}.detail-actions .detail-btn:last-child:nth-child(odd){grid-column:1 / -1;}}',
+      '@container (max-width: 239px){.detail-actions .lbl-long{display:none;}.detail-actions .lbl-short{display:inline;}}',
+      '@container (max-width: 175px){.detail-actions{grid-template-columns:1fr;}}',
       '.detail-btn{padding:7px 14px;border-radius:20px;border:none;cursor:pointer;font-size:13px;font-weight:500;display:inline-flex;align-items:center;gap:5px;transition:filter 0.15s;}',
       '.detail-btn.btn-water{background:rgba(100,180,255,0.15);color:#64b4ff;}.detail-btn.btn-fert{background:rgba(124,185,126,0.15);color:#7cb97e;}',
       '.detail-btn.btn-health{transition:filter 0.15s;}',
