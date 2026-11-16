@@ -110,8 +110,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # ── Blueprints (copy with mtime guard, executor) ─────────────────────────
     if not hass.data.get(f"{DOMAIN}_blueprints_copied"):
-        await hass.async_add_executor_job(_copy_blueprints, hass.config.config_dir)
-        hass.data[f"{DOMAIN}_blueprints_copied"] = True
+        # A disk error here (read-only or full config folder) must not stop the
+        # plant from loading: the blueprint is optional. Not marked as copied,
+        # so the next plant setup tries again.
+        try:
+            await hass.async_add_executor_job(_copy_blueprints, hass.config.config_dir)
+        except OSError as err:
+            _LOGGER.warning("Could not copy the Adaptive Plant blueprint: %s", err)
+        else:
+            hass.data[f"{DOMAIN}_blueprints_copied"] = True
 
     # ── Seed initial state from setup wizard on first load ───────────────────
     initial_options: dict = dict(entry.options)
