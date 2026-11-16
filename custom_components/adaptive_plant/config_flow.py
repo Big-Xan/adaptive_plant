@@ -1380,9 +1380,15 @@ class AdaptivePlantOptionsFlow(_SeasonManagerMixin, OptionsFlow):
                 else:
                     raw_image = user_input.get(CONF_IMAGE_PATH, "")
                     new_path = raw_image.strip() if raw_image else ""
-                    cleaned[CONF_IMAGE_PATH] = new_path
-                    if new_path != current_image_path:
-                        self._retired_images.add(current_image_path)
+                    if new_path and new_path != current_image_path and not new_path.startswith("/local/"):
+                        # Same rule as the wizard and the first-enable step, but
+                        # only for a path changed in this submit, so a path saved
+                        # before this check existed still saves unchanged.
+                        errors[CONF_IMAGE_PATH] = "invalid_image_path"
+                    else:
+                        cleaned[CONF_IMAGE_PATH] = new_path
+                        if new_path != current_image_path:
+                            self._retired_images.add(current_image_path)
             else:
                 # Image disabled — tombstone the path (mirroring CONF_LABEL /
                 # CONF_LATIN_NAME) rather than popping. We also delete the owned
