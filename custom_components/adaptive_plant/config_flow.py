@@ -2118,8 +2118,8 @@ class AdaptivePlantOptionsFlow(_SeasonManagerMixin, OptionsFlow):
                 "select": {
                     "mode": "dropdown",
                     "options": [
-                        {"value": POSITION_ABOVE, "label": "Above the watering / fertilization chips"},
-                        {"value": POSITION_BELOW, "label": "Below the watering / fertilization chips"},
+                        {"value": POSITION_ABOVE, "label": "Before the watering / fertilization chips"},
+                        {"value": POSITION_BELOW, "label": "After the watering / fertilization chips"},
                     ],
                 }
             }),
@@ -2227,8 +2227,8 @@ class AdaptivePlantOptionsFlow(_SeasonManagerMixin, OptionsFlow):
                 "select": {
                     "mode": "dropdown",
                     "options": [
-                        {"value": POSITION_ABOVE, "label": "Above the watering / fertilization chips"},
-                        {"value": POSITION_BELOW, "label": "Below the watering / fertilization chips"},
+                        {"value": POSITION_ABOVE, "label": "Before the watering / fertilization chips"},
+                        {"value": POSITION_BELOW, "label": "After the watering / fertilization chips"},
                     ],
                 }
             }),
