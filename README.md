@@ -162,7 +162,7 @@ Do you also propagate your plants? When you already have **at least one plant al
 ### Via HACS (recommended)
 1. In HACS, go to **Integrations → Custom Repositories**
 2. Add `https://github.com/Big-Xan/adaptive_plant` as an **Integration**
-3. Search for **Adaptive Plant** and install
+3. Navigate to Settings -> Devices and Services -> and search for **Adaptive Plant** on the 'Integrations' tab and install
 4. Restart Home Assistant
 5. After restarting, the companion card and task reminder blueprint are registered automatically — no further steps needed.
 
