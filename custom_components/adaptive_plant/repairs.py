@@ -8,6 +8,8 @@ them and hide the notice (the issue is ignored, so it stays hidden).
 """
 from __future__ import annotations
 
+import posixpath
+
 import voluptuous as vol
 
 from homeassistant import data_entry_flow
@@ -23,13 +25,20 @@ _SHOW_AT_MOST = 10
 
 
 def _referenced_uploads(hass: HomeAssistant) -> set[str]:
-    """File names of the uploads plants use (same precedence as PlantData.image_path)."""
+    """File names of the uploads plants use (same precedence as PlantData.image_path).
+
+    A typed path that only reaches an upload through redundant segments
+    (/local/adaptive_plant//<hex>.jpg, ./ or ../) is normalised first: the
+    image entity still serves that file, so it must count as in use.
+    """
     names: set[str] = set()
     for entry in hass.config_entries.async_entries(DOMAIN):
         if CONF_IMAGE_PATH in entry.options:
             path = entry.options[CONF_IMAGE_PATH]
         else:
             path = entry.data.get(CONF_IMAGE_PATH)
+        if isinstance(path, str) and path and not is_owned_image_path(path):
+            path = posixpath.normpath(path)
         if is_owned_image_path(path):
             names.add(owned_image_filename(path))
     return names
