@@ -526,7 +526,8 @@
           }
         },
         "abort": {
-          "kept": "The photos were kept. This notice won't be shown again; you can delete the files from config/www/adaptive_plant/ yourself at any time."
+          "kept": "The photos were kept. This notice won't be shown again; you can delete the files from config/www/adaptive_plant/ yourself at any time.",
+          "delete_failed": "{count} photo(s) couldn't be deleted, so they are still publicly reachable:\n\n{files}\n\nCheck that Home Assistant can write to config/www/adaptive_plant/, then try again, or delete the files yourself. This notice stays open until they are gone."
         }
       }
     }
