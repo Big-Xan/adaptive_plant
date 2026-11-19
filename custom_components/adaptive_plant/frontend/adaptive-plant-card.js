@@ -6,12 +6,16 @@
 // isn't a plain CSS color / finite number falls back to the field's default.
 // CSS.supports alone isn't enough (a var(--x, …) fallback accepts almost any
 // token run, including </style>), so characters that could leave a CSS value
-// or an HTML attribute are rejected first.
+// or an HTML attribute are rejected first. That includes & (inside a style
+// attribute the HTML parser turns &#59 into ";" before CSS reads it) and ":"
+// (no color needs it; url(https:…) does). Images are never colors either, so
+// url(), image-set(), gradients and friends are refused even as a var() fallback.
 var _AP_COLOR_RE = /^(#[0-9a-f]{3,8}|[a-z]+|(rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\([a-z0-9#.,%\s\/+-]*\)|var\(\s*--[a-z0-9_-]+\s*(,[a-z0-9#.,%\s\/()_+-]*)?\))$/i;
+var _AP_NOT_COLOR_RE = /(url|image|image-set|cross-fade|element|paint|[a-z-]*gradient)\s*\(/i;
 function _apSafeColor(v, fallback) {
   if (typeof v !== 'string') return fallback;
   var s = v.trim();
-  if (!s || /[<>"';{}\\\r\n]/.test(s)) return fallback;
+  if (!s || /[<>"';{}\\&:\r\n]/.test(s) || _AP_NOT_COLOR_RE.test(s)) return fallback;
   if (typeof CSS !== 'undefined' && CSS && typeof CSS.supports === 'function') {
     return CSS.supports('color', s) ? s : fallback;
   }
