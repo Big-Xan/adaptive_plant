@@ -142,6 +142,31 @@ def _copy_blueprints(config_path: str) -> None:
         _LOGGER.debug("Installed blueprint %s → %s", src_file.name, dst_file)
 
 
+async def _async_migrate_disabled_photos(hass: HomeAssistant) -> None:
+    """Move the 1.2.4-era photos of disabled plants out of www/ too.
+
+    Home Assistant never sets up a disabled entry, so the per-entry move in
+    async_setup_entry doesn't run for it, and the Repairs scan skips the file
+    because a plant still references it: without this it would stay public
+    for as long as the plant stays disabled. Same move, same retry rule.
+    """
+    for other in hass.config_entries.async_entries(DOMAIN):
+        if other.disabled_by is None:
+            continue
+        path = other.options.get(CONF_IMAGE_PATH, other.data.get(CONF_IMAGE_PATH))
+        if not is_owned_image_path(path):
+            continue
+        try:
+            await hass.async_add_executor_job(
+                migrate_legacy_image, hass.config.config_dir, path
+            )
+        except OSError as err:
+            _LOGGER.warning(
+                "%s (disabled): could not move the plant photo out of www/%s "
+                "(will retry at next start): %s", other.title, DOMAIN, err,
+            )
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up an Adaptive Plant config entry."""
     hass.data.setdefault(DOMAIN, {})
@@ -232,6 +257,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # (Repairs; the user decides whether to delete them).
     if not hass.data.get(f"{DOMAIN}_photo_check_done"):
         hass.data[f"{DOMAIN}_photo_check_done"] = True
+        await _async_migrate_disabled_photos(hass)
         await async_check_public_photos(hass)
 
     plant = PlantData(hass, entry)
