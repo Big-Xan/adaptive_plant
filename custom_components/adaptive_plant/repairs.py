@@ -95,6 +95,15 @@ class PublicPhotosRepairFlow(RepairsFlow):
                 await self.hass.async_add_executor_job(
                     delete_public_uploads, self.hass.config.config_dir, names
                 )
+                # Only report success once the files are really gone; if any
+                # couldn't be deleted (read-only folder, permissions), abort so
+                # the issue stays open and still lists them.
+                left = set(await _async_unused(self.hass)) & set(names)
+                if left:
+                    return self.async_abort(
+                        reason="delete_failed",
+                        description_placeholders=_placeholders(sorted(left)),
+                    )
                 return self.async_create_entry(data={})
             # Keep: ignore the issue so it stays hidden across restarts.
             ir.async_ignore_issue(self.hass, DOMAIN, ISSUE_PUBLIC_PHOTOS, True)
