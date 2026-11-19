@@ -507,6 +507,28 @@
       "notes": { "name": "Notes" },
       "latin_name": { "name": "Latin name" },
       "repotted_date_input": { "name": "Repotted on" }
+    },
+    "image": {
+      "photo": { "name": "Photo" }
+    }
+  },
+  "issues": {
+    "public_photos": {
+      "title": "Old plant photos are still publicly reachable",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Old plant photos are still publicly reachable",
+            "description": "Adaptive Plant 1.2.4 and earlier saved uploaded photos in `config/www/adaptive_plant/`, which Home Assistant serves to anyone who can reach it, without signing in. Photos your plants use have been moved to private storage, but {count} uploaded photo(s) that no plant uses are still there:\n\n{files}\n\nTurn on the switch and press Submit to delete them, or press Submit with it off to keep them and hide this notice. Only files Adaptive Plant named itself (32 characters ending in .jpg) are listed; your own images are never touched.",
+            "data": {
+              "delete_photos": "Delete these photos"
+            }
+          }
+        },
+        "abort": {
+          "kept": "The photos were kept. This notice won't be shown again; you can delete the files from config/www/adaptive_plant/ yourself at any time."
+        }
+      }
     }
   },
   "exceptions": {
