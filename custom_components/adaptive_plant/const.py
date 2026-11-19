@@ -5,7 +5,7 @@ import re
 
 DOMAIN = "adaptive_plant"
 
-PLATFORMS = ["sensor", "button", "number", "select", "text"]
+PLATFORMS = ["sensor", "button", "number", "select", "text", "image"]
 
 # ── Uploaded-image ownership ───────────────────────────────────────────────────
 # Uploaded photos are saved as a uuid4 hex + ".jpg" (see _save_uploaded_image in
@@ -13,13 +13,31 @@ PLATFORMS = ["sensor", "button", "number", "select", "text"]
 # prefix AND a 32-char hex filename — so an image a user hand-places in the same
 # /www/adaptive_plant/ folder (e.g. /local/adaptive_plant/monstera.png) is never
 # treated as ours and is never auto-deleted on re-upload, disable, or removal.
+#
+# Since 1.2.5 an owned path is only a reference, not a URL: the file lives in
+# private storage (IMAGE_DIR under the config folder, never www/) and is served
+# by the plant's image entity, which requires authentication. The reference
+# keeps its historical /local/ shape so existing config entries need no rewrite;
+# files left in www/ by 1.2.4 and earlier are moved at setup (see __init__.py).
 OWNED_IMAGE_PREFIX = f"/local/{DOMAIN}/"
+IMAGE_DIR = (DOMAIN, "images")          # <config>/adaptive_plant/images/
+LEGACY_IMAGE_DIR = ("www", DOMAIN)      # <config>/www/adaptive_plant/ (pre-1.2.5)
 _OWNED_IMAGE_RE = re.compile(rf"^{re.escape(OWNED_IMAGE_PREFIX)}[0-9a-f]{{32}}\.jpg$")
 
 
 def is_owned_image_path(path: str | None) -> bool:
     """Return True only for image files this integration created and may delete."""
     return bool(path) and _OWNED_IMAGE_RE.match(path) is not None
+
+
+def photo_signal(entry_id: str) -> str:
+    """Dispatcher signal sent when a plant's photo URL changes (new token or photo)."""
+    return f"{DOMAIN}_{entry_id}_photo"
+
+
+def owned_image_filename(path: str) -> str:
+    """The bare file name of an owned image reference (call is_owned_image_path first)."""
+    return path[len(OWNED_IMAGE_PREFIX):]
 
 # ── Config entry data keys (set at setup, not user-editable after) ─────────────
 CONF_PLANT_NAME = "plant_name"
