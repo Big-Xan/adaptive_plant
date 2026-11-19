@@ -803,15 +803,22 @@ class AdaptivePlantConfigFlow(_SeasonManagerMixin, ConfigFlow, domain=DOMAIN):
         # Set once the entry is created. Until then a photo uploaded in this
         # wizard belongs to the flow and is deleted if it closes (async_remove).
         self._created: bool = False
+        # The file this wizard itself uploaded, tracked apart from
+        # CONF_IMAGE_PATH: that field can also hold a typed path, possibly
+        # another plant's managed photo, which the wizard must never delete.
+        self._wizard_upload: str | None = None
 
     @callback
     def async_remove(self) -> None:
-        """The wizard closed. A photo uploaded in it is deleted unless the
-        plant was created (the entry then owns it)."""
-        if not self._created and is_owned_image_path(self._data.get(CONF_IMAGE_PATH)):
-            self.hass.async_add_executor_job(
-                _delete_owned_image, self.hass, self._data.get(CONF_IMAGE_PATH)
-            )
+        """The wizard closed. The photo it uploaded is deleted unless the
+        created plant uses it (the entry then owns it). Typed paths are
+        never touched."""
+        upload = self._wizard_upload
+        if not is_owned_image_path(upload):
+            return
+        if self._created and self._data.get(CONF_IMAGE_PATH) == upload:
+            return
+        self.hass.async_add_executor_job(_delete_owned_image, self.hass, upload)
 
     async def async_step_user(self, user_input: dict | None = None) -> FlowResult:
         # Offer the duplicate path only when there's an existing plant to copy;
@@ -1134,8 +1141,10 @@ class AdaptivePlantConfigFlow(_SeasonManagerMixin, ConfigFlow, domain=DOMAIN):
             path = user_input.get(CONF_IMAGE_PATH, "").strip()
             if file_id:
                 try:
-                    self._data[CONF_IMAGE_PATH] = await _persist_uploaded_image(
-                        self.hass, file_id, self._data.get(CONF_IMAGE_PATH)
+                    # Replaces (and deletes) only this wizard's own earlier
+                    # upload, never a typed path.
+                    self._data[CONF_IMAGE_PATH] = self._wizard_upload = await _persist_uploaded_image(
+                        self.hass, file_id, self._wizard_upload
                     )
                 except Exception:  # noqa: BLE001
                     _LOGGER.exception("Failed to process uploaded plant image")
