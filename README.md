@@ -290,6 +290,7 @@ Hard refresh your browser (Ctrl+Shift+R / Cmd+Shift+R) after installing or updat
 - **Narrow-card friendly** — in narrow columns the expanded detail's action buttons line up two per row with slightly smaller text, then switch to short labels (*Watered*, *Fertilized*, *Repotted*, *Confirm*) instead of stacking one per line.
 - **Transparent background** — option to hide the card background, compatible with frosted glass themes
 - **Pin hold button** — optionally fix the "Hold to Mark All Tasks Completed" button to the bottom of the card (the option is in the editor's Today tab section and shows while the hold button is on)
+- **Choose which plants a card shows** — in the editor's **Plants** section, show only certain areas, hide individual plants, or both. Put several cards side by side, one per room. Filters apply to every tab of that card, and its hold button only completes the plants it shows; your other cards are unaffected.
 - **Full visual editor** — configure everything without writing YAML. The card is also listed in the dashboard card picker.
 
 
@@ -351,6 +352,12 @@ latin_name_padding: 2
   <img width="520" alt="Today tab options in the visual editor" src="https://github.com/user-attachments/assets/83149699-0ae9-419e-8ffa-924b95080edf" />
 </p>
 
+**Plants section (v20.2) — choose which areas and plants this card shows:**
+
+<p align="center">
+  <img width="380" alt="Plants section in the visual editor" src="https://github.com/user-attachments/assets/6d938847-2633-41de-99a8-330a3f22d13e" />
+</p>
+
 **For full YAML configuration reference:**
 ```yaml
 type: custom:adaptive-plant-card
@@ -361,6 +368,11 @@ width: 400                # optional
 show_today: true
 show_upcoming: true
 show_overview: true
+# Plants on this card (optional; names are case-insensitive)
+include_areas:            # only show plants in these areas (area IDs or names)
+  - Kitchen
+exclude_plants:           # hide these plants (the editor saves device IDs; plant names also work)
+  - Jade
 # Schedule
 upcoming_days: 14         # how many days ahead to show (default: 30)
 overdue_color: '#e05c5c'  # color for overdue chips and indicators
