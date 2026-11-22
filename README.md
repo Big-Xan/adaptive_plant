@@ -17,6 +17,7 @@ A fully local, event-driven Home Assistant custom integration for tracking and m
 - [Adaptive Logic](#adaptive-logic)
 - [Companion Lovelace Card](#-companion-lovelace-card)
 - [Task Reminder Blueprint](#-task-reminder-blueprint)
+- [Templates & Scripts](#-templates--scripts)
 - [Frequently Asked Questions](#-faq)
 ---
 
@@ -456,6 +457,101 @@ https://raw.githubusercontent.com/Big-Xan/adaptive_plant/main/custom_components/
 
 ---
 
+## 🧩 Templates & Scripts
+
+Each plant is its own integration entry, so there's no built-in "all plants" sensor or button. These two template helpers and one script give you integration-wide views and actions without configuring each plant: new plants are picked up automatically.
+
+To create a helper, go to **Settings → Devices & Services → Helpers → Create Helper → Template → Template a sensor** and paste the template into **State template**.
+
+### Plant Tasks Today (count)
+
+A number for dashboard badges, `numeric_state` conditions (above 0) and history graphs. Each due or overdue watering, due or overdue fertilizing, and overdue health check-in counts as one task. Name it **Plant Tasks Today** and set **State class** to **Measurement** in the helper form.
+
+```jinja
+{% set t = now().date() | string %}
+{% set ns = namespace(n=0) %}
+{% for e in integration_entities('adaptive_plant') | select('search', '_next_(watering|fertilization)$') %}
+  {% set s = states(e) %}
+  {% if s not in ['unknown', 'unavailable', ''] and s <= t %}
+    {% set ns.n = ns.n + 1 %}
+  {% endif %}
+{% endfor %}
+{% for e in integration_entities('adaptive_plant') | select('match', 'select\\..*_health$') %}
+  {% if state_attr(e, 'health_check_in_overdue') %}
+    {% set ns.n = ns.n + 1 %}
+  {% endif %}
+{% endfor %}
+{{ ns.n }}
+```
+
+<img width="308" alt="Plant Tasks Today badge showing 4 tasks" src="https://github.com/user-attachments/assets/a95a1182-e9e5-4c42-b46e-3b943758cb02" />
+
+### Plants Needing Attention (names)
+
+A list for notification messages: one entry per plant, with its tasks grouped, e.g. `Adanson's Marge (water, fertilize), Flaming Sword (water)`. It shows `None` when nothing is due. Name it **Plants Needing Attention**. Adapted from a template shared by @pajo30 in [#32](https://github.com/Big-Xan/adaptive_plant/issues/32).
+
+```jinja
+{% set t = now().date() | string %}
+{% set ns = namespace(items=[]) %}
+{% for e in integration_entities('adaptive_plant') | select('search', '_next_watering$') %}
+  {% set base = e[7:-14] %}
+  {% set w = states(e) %}
+  {% set f = states('sensor.' ~ base ~ '_next_fertilization') %}
+  {% set tasks = [] %}
+  {% if w not in ['unknown', 'unavailable', ''] and w <= t %}{% set tasks = tasks + ['water'] %}{% endif %}
+  {% if f not in ['unknown', 'unavailable', ''] and f <= t %}{% set tasks = tasks + ['fertilize'] %}{% endif %}
+  {% if state_attr('select.' ~ base ~ '_health', 'health_check_in_overdue') %}{% set tasks = tasks + ['health check'] %}{% endif %}
+  {% if tasks %}
+    {% set ns.items = ns.items + [(device_attr(e, 'name') or base) ~ ' (' ~ tasks | join(', ') ~ ')'] %}
+  {% endif %}
+{% endfor %}
+{{ (ns.items | sort | join(', ') if ns.items else 'None') | truncate(255, false, '…', 0) }}
+```
+
+Home Assistant limits entity states to 255 characters, so on busy days with a large collection the list is cut off with `…`. The count helper is never affected.
+
+<img width="408" alt="Phone notification listing the plants that need attention" src="https://github.com/user-attachments/assets/dd1256e2-715f-4737-bc33-06d01335a4bb" />
+
+For a timed reminder, the bundled [Task Reminder Blueprint](#-task-reminder-blueprint) already sends one; use these helpers when you build your own automations or dashboards.
+
+### Script: Complete All Due Tasks
+
+The card's **Hold to Mark All Tasks Completed** without the card: run it from a notification action, a voice assistant, an NFC tag or a physical button. It presses each due plant's **Mark watered** / **Mark fertilized** button, exactly like the card's hold bar. Health check-ins are not completed, because the card doesn't complete them either.
+
+Create it under **Settings → Automations & Scenes → Scripts → Add Script → ⋮ → Edit in YAML**. It needs Home Assistant 2024.8 or later; on 2024.7, change `action: button.press` to `service: button.press`.
+
+```yaml
+alias: Adaptive Plant – Complete All Due Tasks
+icon: mdi:sprout
+mode: single
+sequence:
+  - variables:
+      buttons: >
+        {% set t = now().date() | string %}
+        {% set ns = namespace(b=[]) %}
+        {% for e in integration_entities('adaptive_plant')
+             | select('search', '_next_(watering|fertilization)$') %}
+          {% set s = states(e) %}
+          {% if s not in ['unknown', 'unavailable', ''] and s <= t %}
+            {% set ns.b = ns.b + [e | replace('sensor.', 'button.')
+               | regex_replace('_next_watering$', '_mark_watered')
+               | regex_replace('_next_fertilization$', '_mark_fertilized')] %}
+          {% endif %}
+        {% endfor %}
+        {{ ns.b }}
+  - condition: template
+    value_template: "{{ buttons | count > 0 }}"
+  - action: button.press
+    target:
+      entity_id: "{{ buttons }}"
+```
+
+> **Note:**
+> - All three find plants by their entity IDs (`_next_watering`, `_next_fertilization`, `_health`, `_mark_watered`, `_mark_fertilized`). If you rename a plant's entity IDs, or set it up in a language other than English, that plant is skipped.
+> - Plants with fertilizing turned off are skipped automatically: their fertilizing sensor is `unavailable`.
+
+---
+
 ## ❓ FAQ
 
 **Does Adaptive Plant tell me how to take care of my plants?**
@@ -534,6 +630,15 @@ that. Re-adding the plant starts completely fresh.
 If you need to change a setting, always use **Configure** rather than
 deleting and re-adding — almost everything is editable after setup
 without losing any data.
+
+---
+
+**Can I get a single sensor for all my plants?**
+
+Not as a built-in entity: each plant is its own integration entry. Two
+template helpers do the job instead, one counting today's tasks and one
+listing the plants that need attention, plus a script that completes
+every due task at once. See [Templates & Scripts](#-templates--scripts).
 
 ---
 
