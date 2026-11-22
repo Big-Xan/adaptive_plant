@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import os
+import posixpath
 import uuid
 from datetime import date, timedelta
 
@@ -353,6 +354,14 @@ async def _persist_uploaded_image(hass: HomeAssistant, file_id: str, previous_pa
     an `invalid_image` form error.
     """
     return await hass.async_add_executor_job(_save_uploaded_image, hass, file_id, previous_path)
+
+
+def _is_reserved_image_path(path: str) -> bool:
+    """A typed path that names an upload (/local/adaptive_plant/<32 hex>.jpg,
+    also via //, ./ or ../). Only an upload may hold such a reference: typed by
+    hand, it would count as this plant's own photo, and replacing or removing
+    the plant would delete a file another plant uses."""
+    return is_owned_image_path(posixpath.normpath(path))
 
 
 # ── Seasonal schedule (Experimental) ───────────────────────────────────────────
@@ -1152,6 +1161,8 @@ class AdaptivePlantConfigFlow(_SeasonManagerMixin, ConfigFlow, domain=DOMAIN):
             elif path:
                 if not path.startswith("/local/"):
                     errors[CONF_IMAGE_PATH] = "invalid_image_path"
+                elif _is_reserved_image_path(path):
+                    errors[CONF_IMAGE_PATH] = "image_path_reserved"
                 else:
                     self._data[CONF_IMAGE_PATH] = path
             else:
@@ -1440,6 +1451,10 @@ class AdaptivePlantOptionsFlow(_SeasonManagerMixin, OptionsFlow):
                         # only for a path changed in this submit, so a path saved
                         # before this check existed still saves unchanged.
                         errors[CONF_IMAGE_PATH] = "invalid_image_path"
+                    elif new_path and new_path != current_image_path and _is_reserved_image_path(new_path):
+                        # The plant's own upload left in the field saves as-is;
+                        # any other upload's file can't be typed in.
+                        errors[CONF_IMAGE_PATH] = "image_path_reserved"
                     else:
                         cleaned[CONF_IMAGE_PATH] = new_path
                         if new_path != current_image_path:
@@ -2348,6 +2363,8 @@ class AdaptivePlantOptionsFlow(_SeasonManagerMixin, OptionsFlow):
             elif path:
                 if not path.startswith("/local/"):
                     errors[CONF_IMAGE_PATH] = "invalid_image_path"
+                elif _is_reserved_image_path(path):
+                    errors[CONF_IMAGE_PATH] = "image_path_reserved"
                 else:
                     self._pending_opts[CONF_IMAGE_PATH] = path
             else:
