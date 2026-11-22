@@ -1,4 +1,4 @@
-// Adaptive Plant Card v20.1
+// Adaptive Plant Card v20.2
 
 // ── Card-config sanitizers ──────────────────────────────────────────────────
 // Config colors and sizes are interpolated into style attributes and the
@@ -32,6 +32,18 @@ function _apSafeNum(v, fallback, min, max) {
 }
 function _apOneOf(v, allowed, fallback) {
   return allowed.indexOf(v) !== -1 ? v : fallback;
+}
+// A string or list of strings -> trimmed, lower-cased, non-empty strings
+// (anything else is dropped). Used for the plant filters, which are only ever
+// compared against device/area ids and names, never rendered.
+function _apStrList(v) {
+  var src = Array.isArray(v) ? v : (typeof v === 'string' ? [v] : []);
+  var out = [];
+  for (var i = 0; i < src.length && out.length < 500; i++) {
+    var s = (typeof src[i] === 'string' || typeof src[i] === 'number') ? String(src[i]).trim().toLowerCase() : '';
+    if (s && out.indexOf(s) === -1) out.push(s);
+  }
+  return out;
 }
 
 class AdaptivePlantCard extends HTMLElement {
@@ -117,6 +129,14 @@ class AdaptivePlantCard extends HTMLElement {
     // under a "Completed Today:" section, with display-only checks (default off).
     this._showHoldButton     = config.show_hold_button     !== false;
     this._showCompletedToday = config.show_completed_today === true;
+
+    // v20.2 options — which plants this card shows (#31). Both are optional and
+    // case-insensitive. exclude_plants: device ids (what the editor saves) or
+    // plant names. include_areas: area ids or names; when set, only plants in
+    // those areas are shown. Applied in _rawPlants, so every tab and the hold
+    // bar see the same filtered set.
+    this._excludePlants = _apStrList(config.exclude_plants);
+    this._includeAreas  = _apStrList(config.include_areas);
 
     var ic = config.icons || {};
     this._icons = {
@@ -631,7 +651,9 @@ class AdaptivePlantCard extends HTMLElement {
       if (!byDevice[ent.device_id]) byDevice[ent.device_id] = [];
       byDevice[ent.device_id].push(ids[i]);
     }
-    return Object.keys(byDevice).map(function(devId) {
+    return Object.keys(byDevice).filter(function(devId) {
+      return self._plantShown(devId, (hass.devices && hass.devices[devId]) || {});
+    }).map(function(devId) {
       var devIds   = byDevice[devId];
       var dev      = (hass.devices && hass.devices[devId]) || {};
       var areaName = dev.area_id ? ((hass.areas && hass.areas[dev.area_id] && hass.areas[dev.area_id].name) || 'No Area') : 'No Area';
@@ -722,6 +744,21 @@ class AdaptivePlantCard extends HTMLElement {
         customSensors:        customResolved,
       };
     }).sort(function(a, b) { return a.name.localeCompare(b.name); });
+  }
+
+  // Card plant filters (exclude_plants / include_areas, see setConfig).
+  _plantShown(devId, dev) {
+    var ex  = this._excludePlants || [];
+    var inc = this._includeAreas  || [];
+    if (!ex.length && !inc.length) return true;
+    var name = String(dev.name_by_user || dev.name || '').toLowerCase();
+    if (ex.indexOf(String(devId).toLowerCase()) !== -1) return false;
+    if (name && ex.indexOf(name) !== -1) return false;
+    if (!inc.length) return true;
+    if (!dev.area_id) return false;
+    var area  = this._hass && this._hass.areas && this._hass.areas[dev.area_id];
+    var aname = area && area.name ? String(area.name).toLowerCase() : '';
+    return inc.indexOf(String(dev.area_id).toLowerCase()) !== -1 || (!!aname && inc.indexOf(aname) !== -1);
   }
 
   _daysNum(str) {
@@ -1113,7 +1150,9 @@ class AdaptivePlantCard extends HTMLElement {
 
   _renderOverview(plants) {
     var self = this;
-    if (!plants.length) return '<div class="empty"><span class="empty-icon">🌱</span><p>No plants added yet.</p></div>';
+    if (!plants.length) return '<div class="empty"><span class="empty-icon">🌱</span><p>' +
+      ((this._excludePlants.length || this._includeAreas.length) ? 'No plants match this card’s plant filters.' : 'No plants added yet.') +
+      '</p></div>';
 
     var healthRank = { excellent: 0, good: 1, poor: 2, sick: 3 };
     var sorted = plants.slice().sort(function(a, b) {
@@ -1441,13 +1480,47 @@ class AdaptivePlantCardEditor extends HTMLElement {
     super();
     this.attachShadow({ mode: 'open' });
     this._config   = {};
-    this._sections = { display: true, schedule: false, health: false, icons: false };
+    this._sections = { display: true, plants: false, schedule: false, health: false, icons: false };
+    this._plantsSig = null;
   }
 
   setConfig(config) {
     this._config = JSON.parse(JSON.stringify(config || {}));
     this._render();
   }
+
+  // HA hands the editor hass on every state change. Re-render only when the
+  // plant/area list itself changes, so typing in a field never loses focus.
+  set hass(hass) {
+    this._hass = hass;
+    var sig = JSON.stringify(this._plantChoices());
+    if (sig === this._plantsSig) return;
+    this._plantsSig = sig;
+    this._render();
+  }
+
+  // Adaptive Plant devices and their areas, for the Plants section pickers.
+  _plantChoices() {
+    var hass = this._hass;
+    var out = { plants: [], areas: [] };
+    if (!hass || !hass.entities) return out;
+    var seen = {}, areaSeen = {};
+    Object.keys(hass.entities).forEach(function(id) {
+      var ent = hass.entities[id];
+      if (!ent || ent.platform !== 'adaptive_plant' || !ent.device_id || seen[ent.device_id]) return;
+      seen[ent.device_id] = true;
+      var dev  = (hass.devices && hass.devices[ent.device_id]) || {};
+      var area = dev.area_id && hass.areas ? hass.areas[dev.area_id] : null;
+      out.plants.push({ id: ent.device_id, name: dev.name_by_user || dev.name || 'Plant', area: area ? area.name : '' });
+      if (area && !areaSeen[dev.area_id]) { areaSeen[dev.area_id] = true; out.areas.push({ id: dev.area_id, name: area.name }); }
+    });
+    var byName = function(a, b) { return String(a.name).localeCompare(String(b.name)); };
+    out.plants.sort(byName); out.areas.sort(byName);
+    return out;
+  }
+
+  // Current filter list from the config (same normalisation as the card).
+  _filterList(key) { return _apStrList(this._config[key]); }
 
   // Config values are written into value="..." attributes: escape them so a
   // quote or < in a saved value can't break out of the attribute.
@@ -1491,6 +1564,7 @@ class AdaptivePlantCardEditor extends HTMLElement {
   _editorHtml() {
     return '<div class="editor">' +
       this._section('display',  '🖥️  Display',  this._displayFields())  +
+      this._section('plants',   '🪴  Plants',   this._plantFields())    +
       this._section('schedule', '📅  Schedule', this._scheduleFields()) +
       this._section('health',   '🌡️  Health',   this._healthFields())   +
       this._section('icons',    '🎨  Icons',    this._iconFields())     +
@@ -1603,6 +1677,57 @@ class AdaptivePlantCardEditor extends HTMLElement {
       '</div>';
   }
 
+  _plantFields() {
+    var self    = this;
+    var choices = this._plantChoices();
+    var inc     = this._filterList('include_areas');
+    var ex      = this._filterList('exclude_plants');
+    var pick = function(kind, item, on, sub) {
+      return '<label class="toggle-label"><span>' + self._esc(item.name) +
+        (sub ? '<span class="pick-sub">' + self._esc(sub) + '</span>' : '') + '</span><div class="toggle-wrap">' +
+        '<input type="checkbox" class="pick-input" data-pick="' + kind + '" data-id="' + self._esc(item.id) +
+        '" data-name="' + self._esc(item.name) + '" ' + (on ? 'checked' : '') + ' />' +
+        '<span class="toggle-slider"></span></div></label>';
+    };
+    if (!choices.plants.length) {
+      return '<div class="field-hint">No Adaptive Plant plants found yet.</div>';
+    }
+    var areas = choices.areas.map(function(a) {
+      var on = inc.indexOf(String(a.id).toLowerCase()) !== -1 || inc.indexOf(String(a.name).toLowerCase()) !== -1;
+      return pick('area', a, on, '');
+    }).join('');
+    var plants = choices.plants.map(function(p) {
+      var off = ex.indexOf(String(p.id).toLowerCase()) !== -1 || ex.indexOf(String(p.name).toLowerCase()) !== -1;
+      return pick('plant', p, !off, p.area);
+    }).join('');
+    return (areas
+        ? '<div class="field-group"><div class="field-label">Only show these areas</div>' +
+            '<div class="pick-list">' + areas + '</div>' +
+            '<div class="field-hint">Leave all off to show every area. When any are on, plants without an area are hidden too.</div>' +
+          '</div>'
+        : '') +
+      '<div class="field-group"><div class="field-label">Plants on this card</div>' +
+        '<div class="pick-list">' + plants + '</div>' +
+        '<div class="field-hint">Turn a plant off to hide it from every tab of this card. The hold button only completes the plants this card shows. Your other cards are unaffected.</div>' +
+      '</div>';
+  }
+
+  // Toggle one plant (exclude_plants) or area (include_areas). Entries typed
+  // by hand in YAML (names, or ids of plants not listed) are kept as they are.
+  _togglePick(kind, id, name, on) {
+    var key  = kind === 'area' ? 'include_areas' : 'exclude_plants';
+    var add  = kind === 'area' ? on : !on;
+    var lid  = String(id).toLowerCase(), lname = String(name).toLowerCase();
+    var cur  = Array.isArray(this._config[key]) ? this._config[key].slice()
+             : (typeof this._config[key] === 'string' ? [this._config[key]] : []);
+    var next = cur.filter(function(v) {
+      var s = String(v).trim().toLowerCase();
+      return s !== lid && s !== lname;
+    });
+    if (add) next.push(id);
+    this._set(key, next.length ? next : null);
+  }
+
   _scheduleFields() {
     return '<div class="field-row">' +
       this._textField('Upcoming days cutoff', 'upcoming_days', this._get('upcoming_days', 30), 'e.g. 14', 'number') +
@@ -1703,6 +1828,9 @@ class AdaptivePlantCardEditor extends HTMLElement {
     this.shadowRoot.querySelectorAll('.toggle-input').forEach(function(el) {
       el.addEventListener('change', function() { self._set(el.dataset.path, el.checked); });
     });
+    this.shadowRoot.querySelectorAll('.pick-input').forEach(function(el) {
+      el.addEventListener('change', function() { self._togglePick(el.dataset.pick, el.dataset.id, el.dataset.name, el.checked); });
+    });
     this.shadowRoot.querySelectorAll('.text-input').forEach(function(el) {
       el.addEventListener('change', function() {
         self._set(el.dataset.path, el.type === 'number' ? (el.value === '' ? null : Number(el.value)) : el.value);
@@ -1758,6 +1886,11 @@ class AdaptivePlantCardEditor extends HTMLElement {
       '.toggle-input:checked + .toggle-slider{background:#7cb97e;}',
       '.toggle-slider::after{content:"";position:absolute;width:16px;height:16px;left:3px;top:3px;border-radius:50%;background:#fff;transition:transform 0.2s;}',
       '.toggle-input:checked + .toggle-slider::after{transform:translateX(16px);}',
+      '.pick-input{opacity:0;width:0;height:0;position:absolute;}',
+      '.pick-input:checked + .toggle-slider{background:#7cb97e;}',
+      '.pick-input:checked + .toggle-slider::after{transform:translateX(16px);}',
+      '.pick-list{display:flex;flex-direction:column;gap:8px;}',
+      '.pick-sub{margin-left:8px;font-size:11px;color:var(--secondary-text-color,#888);}',
       '.text-field{display:flex;flex-direction:column;gap:4px;}',
       '.text-input{background:var(--input-fill-color,rgba(255,255,255,0.06));border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:var(--primary-text-color,#e5e5e5);font-size:13px;padding:8px 10px;outline:none;width:100%;box-sizing:border-box;}',
       '.text-input:focus{border-color:#7cb97e;}',
