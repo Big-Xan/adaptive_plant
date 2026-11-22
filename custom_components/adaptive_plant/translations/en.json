@@ -209,6 +209,7 @@
     "error": {
       "name_required": "Plant name cannot be empty.",
       "invalid_image_path": "Image path must start with /local/.",
+      "image_path_reserved": "That's the file name of an uploaded photo, which can't be entered as a path. Upload the photo instead, or give your file a different name.",
       "invalid_image": "Could not process the uploaded image. Please choose a different file and make sure it is a PNG or JPEG.",
       "dry_above_wet": "Dry threshold must be less than wet threshold.",
       "invalid_date": "Please enter a valid date.",
@@ -459,6 +460,7 @@
       "dry_above_wet": "Dry threshold must be less than wet threshold.",
       "invalid_date": "Please enter a valid date.",
       "invalid_image_path": "Image path must start with /local/.",
+      "image_path_reserved": "That's the file name of an uploaded photo, which can't be entered as a path. Upload the photo instead, or give your file a different name.",
       "invalid_image": "Could not process the uploaded image. Please choose a different file and make sure it is a PNG or JPEG.",
       "invalid_season_day": "That day doesn't exist in the chosen month.",
       "season_overlap": "These dates overlap another season.",
