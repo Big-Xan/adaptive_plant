@@ -17,6 +17,7 @@ A fully local, event-driven Home Assistant custom integration for tracking and m
 - [Adaptive Logic](#adaptive-logic)
 - [Companion Lovelace Card](#-companion-lovelace-card)
 - [Task Reminder Blueprint](#-task-reminder-blueprint)
+- [Templates & Scripts](#-templates--scripts)
 - [Frequently Asked Questions](#-faq)
 ---
 
@@ -67,8 +68,8 @@ A fully local, event-driven Home Assistant custom integration for tracking and m
 ### 🖼️ Plant Image (optional)
 Give a plant a photo to display on dashboard cards. There are two ways to do it — pick whichever you prefer, in the setup wizard or later via Configure:
 
-- **Upload a photo (recommended)** — choose a **PNG or JPEG** file directly in the wizard or options flow. The image is processed for you automatically (orientation corrected, downscaled to a max of 1024px, saved as JPEG) and written to `config/www/adaptive_plant/`. Uploaded images are managed by the integration: the old file is cleaned up automatically when you replace the photo, disable the image option, or remove the plant.
-- **Enter a `/local/` path** — point at an image you've placed yourself. I recommend creating a folder titled 'adaptive_plant' in your `/www/` folder and putting your plant images there.
+- **Upload a photo (recommended)** — choose a **PNG or JPEG** file directly in the wizard or options flow. The image is processed for you automatically (orientation corrected, downscaled to a max of 1024px, saved as JPEG) and stored privately in `config/adaptive_plant/images/`. Home Assistant never serves that folder publicly: the photo reaches your dashboards through the plant's **Photo** image entity, which only signed-in users can load. Uploaded images are managed by the integration: the old file is cleaned up automatically when you replace the photo, disable the image option, or remove the plant.
+- **Enter a `/local/` path** — point at an image you've placed yourself. Note that Home Assistant serves everything in `/www/` (as `/local/`) to anyone who can reach your instance, without signing in; upload the photo instead if that matters to you. I recommend creating a folder titled 'adaptive_plant' in your `/www/` folder and putting your plant images there.
 > **Example image pathway (w/ folder created) for card config:**  `/local/adaptive_plant/monstera.png`
 
 > **Example image pathway (without folder, uploaded directly into `/www/`) for card config:**  `/local/monstera.png`
@@ -81,7 +82,9 @@ If you supply both an upload and a path at the same time, the **upload wins**.
 
 > **📱 Uploading from an iPhone?** Photos you've taken are HEIC/HEIF, but iOS transcodes them to JPEG when you pick one through the file selector — so iPhone uploads work. A raw `.heic` file (e.g. dragged from a desktop) isn't supported and is rejected with an "invalid image" error.
 
-> **🏷️ A note on file names:** Uploaded images get auto-generated names — a 32-character hex string ending in `.jpg` — and those are the *only* files the integration ever deletes on its own. Hand-placed images are left completely untouched, **unless** you happen to give one a 32-character hex name ending in `.jpg` inside `/local/adaptive_plant/`, which would look like a managed file. Any normal name (`monstera.png`, `my_fern.jpg`) is perfectly safe.
+> **⬆️ Upgrading from v1.2.4 or earlier?** Earlier versions saved uploaded photos in `config/www/adaptive_plant/`, where they could be loaded without signing in. On the first start after upgrading, each plant's uploaded photo is moved to private storage automatically; your plants and dashboards keep showing it. The old `/local/adaptive_plant/…jpg` address stops working, so if you used it anywhere else, switch to the plant's **Photo** entity. Uploaded files that no plant uses (for example from a setup wizard you closed) are never deleted automatically: if any are left in `config/www/adaptive_plant/`, **Settings → Repairs** lists them and lets you delete them, or keep them and hide the notice. Downgrading afterwards hides uploaded photos until you upload them again.
+
+> **🏷️ A note on file names:** Uploaded images get auto-generated names — a 32-character hex string ending in `.jpg` — and those are the *only* files the integration ever deletes on its own. Hand-placed images are left completely untouched, **unless** you happen to give one a 32-character hex name ending in `.jpg` inside `/local/adaptive_plant/`, which would look like a managed file: the setup wizard and Configure won't accept that as a typed path, and one saved before v1.2.5 is moved into private storage like an upload. Any normal name (`monstera.png`, `my_fern.jpg`) is perfectly safe.
 
 ### 🔬 Latin Name (optional)
 - Store the scientific name for each plant
@@ -159,12 +162,23 @@ Do you also propagate your plants? When you already have **at least one plant al
 
 ## Installation
 
-### Via HACS (recommended)
-1. In HACS, go to **Integrations → Custom Repositories**
-2. Add `https://github.com/Big-Xan/adaptive_plant` as an **Integration**
-3. Navigate to Settings -> Devices and Services -> and search for **Adaptive Plant** on the 'Integrations' tab and install
+### Via Marketplace (Home Assistant 2026.11 and later, recommended)
+Since Home Assistant 2026.11, HACS is built in as the **Marketplace**.
+1. Go to **Settings → Marketplace** (the first time, accept the notice about community projects)
+2. Select **Add from link** and enter `https://github.com/Big-Xan/adaptive_plant`
+3. Open **Adaptive Plant** and select **Install**
+4. Set up your first plant when prompted. If you aren't prompted, go to **Settings → Devices & Services → Add Integration** and search for **Adaptive Plant**. If Home Assistant asks for a restart, restart first.
+5. The companion card and task reminder blueprint are registered automatically — no further steps needed.
+
+> Once Adaptive Plant is listed in the default catalog, skip step 2: just search for **Adaptive Plant** in the Marketplace.
+
+### Via HACS (before Home Assistant 2026.11)
+1. In HACS, open the menu (⋮) → **Custom repositories**
+2. Add `https://github.com/Big-Xan/adaptive_plant` with the type **Integration**
+3. Still in HACS, search for **Adaptive Plant** and **Download** it
 4. Restart Home Assistant
-5. After restarting, the companion card and task reminder blueprint are registered automatically — no further steps needed.
+5. Go to **Settings → Devices & Services → Add Integration**, search for **Adaptive Plant**, and add your first plant
+6. The companion card and task reminder blueprint are registered automatically — no further steps needed.
 
 ### Manual
 1. Copy the `custom_components/adaptive_plant/` folder into your HA `config/custom_components/` directory
@@ -226,6 +240,7 @@ Each plant creates a device with the following entities:
 | Repotted on | Text | *(if repotting enabled)* Enter a past date (or today) in `YYYY-MM-DD` format before pressing Mark repotted |
 | Notes | Text | *(if notes enabled)* Up to 255 characters |
 | Latin name | Text | *(if latin name enabled)* |
+| Photo | Image | *(if image enabled)* The plant's photo, served only to signed-in users; the Next watering sensor shows it as its picture |
 | Soil moisture | Sensor | Diagnostic — live reading from the moisture sensor *(only for plants with a moisture sensor; plants that already had this entity keep it)* |
 
 ---
@@ -234,11 +249,11 @@ Each plant creates a device with the following entities:
 
 ### Watering interval reduction
 If you press **Mark Watered** before the scheduled date, an early watering counter increments. Once it reaches the configured threshold, the watering interval is reduced by 1 day (minimum 1). The counter resets if you water on time.
-> **Example:** If you notice a plant that has a 7 day watering interval is dry prior to its set watering date (7th day since last watering) -> you water it early repeatedly (marking the watering each time) -> once it hits the threshold you entered on set-up the watering period is decreased by a day.
+> **Example:** If you notice a plant that has a 7 day watering interval is dry prior to its set watering date (7th day since last watering) → you water it early repeatedly (marking the watering each time) → once it hits the threshold you entered on set-up the watering period is decreased by a day.
 
 ### Watering interval extension
 If you press **Snooze today's tasks** when a watering is due, a snooze streak counter increments and the task is pushed to tomorrow. Once it the snooze count reaches the configured threshold across consecutive periods, the watering interval increases by 1 day (maximum 365). The streak resets if you water without snoozing.
-> **Example:** If you notice a plant that has a 7 day watering interval is not in need of watering on its due date -> you snooze the task until the soil is adequately dry -> if this pattern repeats across enough consecutive watering periods to hit the configured threshold, the watering interval is extended by a day to better match the plant's actual needs.
+> **Example:** If you notice a plant that has a 7 day watering interval is not in need of watering on its due date → you snooze the task until the soil is adequately dry → if this pattern repeats across enough consecutive watering periods to hit the configured threshold, the watering interval is extended by a day to better match the plant's actual needs.
 
 With a seasonal schedule, this learning applies to whichever period (base schedule or season) is in effect on the day you water or snooze.
 
@@ -275,6 +290,7 @@ Hard refresh your browser (Ctrl+Shift+R / Cmd+Shift+R) after installing or updat
 - **Narrow-card friendly** — in narrow columns the expanded detail's action buttons line up two per row with slightly smaller text, then switch to short labels (*Watered*, *Fertilized*, *Repotted*, *Confirm*) instead of stacking one per line.
 - **Transparent background** — option to hide the card background, compatible with frosted glass themes
 - **Pin hold button** — optionally fix the "Hold to Mark All Tasks Completed" button to the bottom of the card (the option is in the editor's Today tab section and shows while the hold button is on)
+- **Choose which plants a card shows** — in the editor's **Plants** section, show only certain areas, hide individual plants, or both. Put several cards side by side, one per room. Filters apply to every tab of that card, and its hold button only completes the plants it shows; your other cards are unaffected.
 - **Full visual editor** — configure everything without writing YAML. The card is also listed in the dashboard card picker.
 
 
@@ -336,6 +352,12 @@ latin_name_padding: 2
   <img width="520" alt="Today tab options in the visual editor" src="https://github.com/user-attachments/assets/83149699-0ae9-419e-8ffa-924b95080edf" />
 </p>
 
+**Plants section (v20.2) — choose which areas and plants this card shows:**
+
+<p align="center">
+  <img width="380" alt="Plants section in the visual editor" src="https://github.com/user-attachments/assets/6d938847-2633-41de-99a8-330a3f22d13e" />
+</p>
+
 **For full YAML configuration reference:**
 ```yaml
 type: custom:adaptive-plant-card
@@ -346,6 +368,11 @@ width: 400                # optional
 show_today: true
 show_upcoming: true
 show_overview: true
+# Plants on this card (optional; names are case-insensitive)
+include_areas:            # only show plants in these areas (area IDs or names)
+  - Kitchen
+exclude_plants:           # hide these plants (the editor saves device IDs; plant names also work)
+  - Jade
 # Schedule
 upcoming_days: 14         # how many days ahead to show (default: 30)
 overdue_color: '#e05c5c'  # color for overdue chips and indicators
@@ -425,6 +452,8 @@ All options are... they're optional — omit any to use defaults.
 
 A companion blueprint for daily plant task reminders is bundled with the integration and copied automatically into your HA blueprints directory when the integration loads — find it under Settings → Automations & Scenes → Blueprints without any manual import needed.
 
+> **Edited the blueprint?** Your changes are kept. The integration installs the blueprint when it's missing and updates it only while it is an unmodified copy of a version that shipped with the integration. Once you edit it, it is never overwritten; to take a newer version, compare it with the one in the repository and copy over what you want (or delete your copy and restart to get a fresh one).
+
 Sends a single combined notification when any of your plants have watering or fertilization tasks due or overdue — automatically discovering all plants without any manual configuration. Supports up to three daily reminder times, customizable notification text, an optional task count summary (e.g. "4 Waterings and 2 Fertilizations"), and a tap action to open your plant dashboard directly. Optionally restrict notifications to only fire when a person is in a specific zone. Plants can be individually excluded from watering or fertilization reminders. Compatible with the Home Assistant Companion App (iOS and Android).
 
 > **Upgrading from v1.1.0 or earlier?** The blueprint was previously available at `blueprints/automation/adaptive_plant/plant_task_reminders.yaml` in the repo root and required manual import. It can still be imported manually from that path on those versions. From v1.2.0 onwards it is bundled and copied automatically.
@@ -437,6 +466,101 @@ https://raw.githubusercontent.com/Big-Xan/adaptive_plant/main/custom_components/
 ```
 
 ![Task Reminder Blueprint](https://github.com/user-attachments/assets/a1c65a41-0737-4fd7-a3aa-e71e9ae2b0d5)
+
+---
+
+## 🧩 Templates & Scripts
+
+Each plant is its own integration entry, so there's no built-in "all plants" sensor or button. These two template helpers and one script give you integration-wide views and actions without configuring each plant: new plants are picked up automatically.
+
+To create a helper, go to **Settings → Devices & Services → Helpers → Create Helper → Template → Template a sensor** and paste the template into **State template**.
+
+### Plant Tasks Today (count)
+
+A number for dashboard badges, `numeric_state` conditions (above 0) and history graphs. Each due or overdue watering, due or overdue fertilizing, and overdue health check-in counts as one task. Name it **Plant Tasks Today** and set **State class** to **Measurement** in the helper form.
+
+```jinja
+{% set t = now().date() | string %}
+{% set ns = namespace(n=0) %}
+{% for e in integration_entities('adaptive_plant') | select('search', '_next_(watering|fertilization)$') %}
+  {% set s = states(e) %}
+  {% if s not in ['unknown', 'unavailable', ''] and s <= t %}
+    {% set ns.n = ns.n + 1 %}
+  {% endif %}
+{% endfor %}
+{% for e in integration_entities('adaptive_plant') | select('match', 'select\\..*_health$') %}
+  {% if state_attr(e, 'health_check_in_overdue') %}
+    {% set ns.n = ns.n + 1 %}
+  {% endif %}
+{% endfor %}
+{{ ns.n }}
+```
+
+<img width="308" alt="Plant Tasks Today badge showing 4 tasks" src="https://github.com/user-attachments/assets/a95a1182-e9e5-4c42-b46e-3b943758cb02" />
+
+### Plants Needing Attention (names)
+
+A list for notification messages: one entry per plant, with its tasks grouped, e.g. `Adanson's Marge (water, fertilize), Flaming Sword (water)`. It shows `None` when nothing is due. Name it **Plants Needing Attention**. Adapted from a template shared by @pajo30 in [#32](https://github.com/Big-Xan/adaptive_plant/issues/32).
+
+```jinja
+{% set t = now().date() | string %}
+{% set ns = namespace(items=[]) %}
+{% for e in integration_entities('adaptive_plant') | select('search', '_next_watering$') %}
+  {% set base = e[7:-14] %}
+  {% set w = states(e) %}
+  {% set f = states('sensor.' ~ base ~ '_next_fertilization') %}
+  {% set tasks = [] %}
+  {% if w not in ['unknown', 'unavailable', ''] and w <= t %}{% set tasks = tasks + ['water'] %}{% endif %}
+  {% if f not in ['unknown', 'unavailable', ''] and f <= t %}{% set tasks = tasks + ['fertilize'] %}{% endif %}
+  {% if state_attr('select.' ~ base ~ '_health', 'health_check_in_overdue') %}{% set tasks = tasks + ['health check'] %}{% endif %}
+  {% if tasks %}
+    {% set ns.items = ns.items + [(device_attr(e, 'name') or base) ~ ' (' ~ tasks | join(', ') ~ ')'] %}
+  {% endif %}
+{% endfor %}
+{{ (ns.items | sort | join(', ') if ns.items else 'None') | truncate(255, false, '…', 0) }}
+```
+
+Home Assistant limits entity states to 255 characters, so on busy days with a large collection the list is cut off with `…`. The count helper is never affected.
+
+<img width="408" alt="Phone notification listing the plants that need attention" src="https://github.com/user-attachments/assets/dd1256e2-715f-4737-bc33-06d01335a4bb" />
+
+For a timed reminder, the bundled [Task Reminder Blueprint](#-task-reminder-blueprint) already sends one; use these helpers when you build your own automations or dashboards.
+
+### Script: Complete All Due Tasks
+
+The card's **Hold to Mark All Tasks Completed** without the card: run it from a notification action, a voice assistant, an NFC tag or a physical button. It presses each due plant's **Mark watered** / **Mark fertilized** button, exactly like the card's hold bar. Health check-ins are not completed, because the card doesn't complete them either.
+
+Create it under **Settings → Automations & Scenes → Scripts → Add Script → ⋮ → Edit in YAML**. It needs Home Assistant 2024.8 or later; on 2024.7, change `action: button.press` to `service: button.press`.
+
+```yaml
+alias: Adaptive Plant – Complete All Due Tasks
+icon: mdi:sprout
+mode: single
+sequence:
+  - variables:
+      buttons: >
+        {% set t = now().date() | string %}
+        {% set ns = namespace(b=[]) %}
+        {% for e in integration_entities('adaptive_plant')
+             | select('search', '_next_(watering|fertilization)$') %}
+          {% set s = states(e) %}
+          {% if s not in ['unknown', 'unavailable', ''] and s <= t %}
+            {% set ns.b = ns.b + [e | replace('sensor.', 'button.')
+               | regex_replace('_next_watering$', '_mark_watered')
+               | regex_replace('_next_fertilization$', '_mark_fertilized')] %}
+          {% endif %}
+        {% endfor %}
+        {{ ns.b }}
+  - condition: template
+    value_template: "{{ buttons | count > 0 }}"
+  - action: button.press
+    target:
+      entity_id: "{{ buttons }}"
+```
+
+> **Note:**
+> - All three find plants by their entity IDs (`_next_watering`, `_next_fertilization`, `_health`, `_mark_watered`, `_mark_fertilized`). If you rename a plant's entity IDs, or set it up in a language other than English, that plant is skipped.
+> - Plants with fertilizing turned off are skipped automatically: their fertilizing sensor is `unavailable`.
 
 ---
 
@@ -521,10 +645,20 @@ without losing any data.
 
 ---
 
+**Can I get a single sensor for all my plants?**
+
+Not as a built-in entity: each plant is its own integration entry. Two
+template helpers do the job instead, one counting today's tasks and one
+listing the plants that need attention, plus a script that completes
+every due task at once. See [Templates & Scripts](#-templates--scripts).
+
+---
+
 ## Privacy & Security
 
 - Fully local — no external API calls, no telemetry, no analytics
 - All state stored in config entries only
+- Uploaded photos are stored outside `www/` and served only through Home Assistant's authenticated image entity proxy
 - One HTTP endpoint registered to serve the bundled Lovelace card (`/adaptive_plant/adaptive-plant-card.js`) — no other endpoints exposed
 > **Note:** Versions v1.1.0 and earlier registered no HTTP endpoints and required manual card and blueprint installation.
 > - No shell commands executed

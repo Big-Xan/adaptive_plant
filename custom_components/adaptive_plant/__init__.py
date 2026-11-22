@@ -1,8 +1,10 @@
 """Adaptive Plant integration — entry point."""
 from __future__ import annotations
 
+import hashlib
 import logging
-import shutil
+import os
+import tempfile
 from pathlib import Path
 
 from homeassistant.config_entries import ConfigEntry
@@ -21,7 +23,6 @@ from .const import (
     HEALTH_OPTIONS,
     is_owned_image_path,
     OPT_WATERING_INTERVAL,
-    OWNED_IMAGE_PREFIX,
     PLATFORMS,
     STATE_HEALTH,
     STATE_HEALTH_LAST_UPDATED,
@@ -31,7 +32,9 @@ from .const import (
     STATE_NEXT_FERTILIZED,
     STATE_NEXT_WATERING,
 )
+from .images import MIGRATED, MISSING, delete_owned_image, migrate_legacy_image
 from .plant import PlantData, local_today
+from .repairs import async_check_public_photos
 from .sensor import moisture_entity_wanted
 
 _LOGGER = logging.getLogger(__name__)
@@ -39,6 +42,19 @@ _LOGGER = logging.getLogger(__name__)
 _CARD_URL = f"/{DOMAIN}/adaptive-plant-card.js"
 _CARD_PATH = Path(__file__).parent / "frontend" / "adaptive-plant-card.js"
 _BLUEPRINTS_SRC = Path(__file__).parent / "blueprints" / "automation"
+
+# sha256 of every version of each bundled blueprint that has ever shipped
+# (including the pre-1.2.0 copies users installed by hand). An installed file
+# matching one of these is an unmodified stock copy and may be updated; any
+# other content is the user's edit and is never touched. When a blueprint
+# changes, add the hash of the version being replaced here.
+_SHIPPED_BLUEPRINT_SHA256: dict[str, frozenset[str]] = {
+    "plant_task_reminders.yaml": frozenset({
+        "75e093645fafd52fe8058943c373c192f2caf7e9bd4c3dbb0581dc6ec7355166",  # v1.0.3
+        "3172c0648de7247f22d4847c1f8dd1671b284e84fa2f6499d33058f11a18fe0a",  # v1.0.5
+        "1fc66055e2ba13c5704a6d213af2bb26ed33ee66ed1084da0e79f447f2e8f089",  # v1.2.0 – v1.2.4
+    }),
+}
 
 
 def _entity_features(hass: HomeAssistant, entry: ConfigEntry, plant: PlantData) -> dict[str, bool]:
@@ -49,6 +65,7 @@ def _entity_features(hass: HomeAssistant, entry: ConfigEntry, plant: PlantData) 
         "latin_name": plant.enable_latin_name,
         "repotting": plant.enable_repotting,
         "moisture": moisture_entity_wanted(hass, entry, plant),
+        "image": plant.enable_image,
     }
 
 
@@ -68,8 +85,14 @@ async def _async_register_frontend(hass: HomeAssistant) -> None:
     # Silently skips if Lovelace is in YAML mode.
     try:
         lovelace = hass.data.get("lovelace")
-        if lovelace and hasattr(lovelace, "resources"):
-            resources = lovelace.resources
+        # Older HA (incl. the 2024.7 floor) keeps a dict here; newer HA an
+        # object with a .resources attribute. In YAML mode there is no
+        # storage collection to add to.
+        if isinstance(lovelace, dict):
+            resources = lovelace.get("resources")
+        else:
+            resources = getattr(lovelace, "resources", None)
+        if resources is not None and hasattr(resources, "async_create_item"):
             await resources.async_load()
             already_registered = any(
                 _CARD_URL in (item.get("url") or "")
@@ -87,16 +110,61 @@ async def _async_register_frontend(hass: HomeAssistant) -> None:
 
 
 def _copy_blueprints(config_path: str) -> None:
-    """Copy bundled blueprints into the HA blueprints directory (executor job)."""
+    """Install bundled blueprints into the HA blueprints directory (executor job).
+
+    A blueprint is written only when the installed copy is missing or is an
+    unmodified copy of a version we shipped; a user-edited copy is never
+    replaced, whatever its modification time (HACS gives every file in a
+    release a fresh one). The write goes to a temp file renamed into place, so
+    an interrupted copy can't leave a half-written blueprint behind.
+    """
     dst_dir = Path(config_path) / "blueprints" / "automation" / DOMAIN
     dst_dir.mkdir(parents=True, exist_ok=True)
     for src_file in _BLUEPRINTS_SRC.glob("*.yaml"):
         dst_file = dst_dir / src_file.name
-        # mtime guard — skip if destination is newer (preserves user edits)
-        if dst_file.exists() and dst_file.stat().st_mtime >= src_file.stat().st_mtime:
+        content = src_file.read_bytes()
+        if dst_file.exists():
+            installed = dst_file.read_bytes()
+            if installed == content:
+                continue
+            shipped = _SHIPPED_BLUEPRINT_SHA256.get(src_file.name, frozenset())
+            if hashlib.sha256(installed).hexdigest() not in shipped:
+                _LOGGER.debug("Keeping edited blueprint %s", dst_file)
+                continue
+        fd, tmp = tempfile.mkstemp(dir=dst_dir, prefix=f".{src_file.name}.", suffix=".part")
+        try:
+            with os.fdopen(fd, "wb") as handle:
+                handle.write(content)
+            os.replace(tmp, dst_file)
+        except BaseException:
+            Path(tmp).unlink(missing_ok=True)
+            raise
+        _LOGGER.debug("Installed blueprint %s → %s", src_file.name, dst_file)
+
+
+async def _async_migrate_disabled_photos(hass: HomeAssistant) -> None:
+    """Move the 1.2.4-era photos of disabled plants out of www/ too.
+
+    Home Assistant never sets up a disabled entry, so the per-entry move in
+    async_setup_entry doesn't run for it, and the Repairs scan skips the file
+    because a plant still references it: without this it would stay public
+    for as long as the plant stays disabled. Same move, same retry rule.
+    """
+    for other in hass.config_entries.async_entries(DOMAIN):
+        if other.disabled_by is None:
             continue
-        shutil.copy2(src_file, dst_file)
-        _LOGGER.debug("Copied blueprint %s → %s", src_file.name, dst_file)
+        path = other.options.get(CONF_IMAGE_PATH, other.data.get(CONF_IMAGE_PATH))
+        if not is_owned_image_path(path):
+            continue
+        try:
+            await hass.async_add_executor_job(
+                migrate_legacy_image, hass.config.config_dir, path
+            )
+        except OSError as err:
+            _LOGGER.warning(
+                "%s (disabled): could not move the plant photo out of www/%s "
+                "(will retry at next start): %s", other.title, DOMAIN, err,
+            )
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -160,6 +228,37 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     if seeded:
         hass.config_entries.async_update_entry(entry, options=initial_options)
+
+    # ── Move a 1.2.4-era uploaded photo out of www/ (before entities exist) ──
+    # The reference in the entry is unchanged; only the file moves to private
+    # storage, so its old /local/ URL stops serving it. Retried on every setup
+    # until it succeeds.
+    image_path = entry.options.get(CONF_IMAGE_PATH, entry.data.get(CONF_IMAGE_PATH))
+    if is_owned_image_path(image_path):
+        try:
+            result = await hass.async_add_executor_job(
+                migrate_legacy_image, hass.config.config_dir, image_path
+            )
+        except OSError as err:
+            _LOGGER.warning(
+                "%s: could not move the plant photo out of www/%s (will retry at "
+                "next start): %s", entry.title, DOMAIN, err,
+            )
+        else:
+            if result == MISSING:
+                _LOGGER.warning(
+                    "%s: the uploaded plant photo is missing; upload it again in "
+                    "Configure", entry.title,
+                )
+            elif result == MIGRATED:
+                _LOGGER.info("%s: moved the plant photo to private storage", entry.title)
+
+    # Once per HA run: flag uploads left public in www/ that no plant uses
+    # (Repairs; the user decides whether to delete them).
+    if not hass.data.get(f"{DOMAIN}_photo_check_done"):
+        hass.data[f"{DOMAIN}_photo_check_done"] = True
+        await _async_migrate_disabled_photos(hass)
+        await async_check_public_photos(hass)
 
     plant = PlantData(hass, entry)
     hass.data[DOMAIN][entry.entry_id] = plant
@@ -274,18 +373,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return unloaded
 
 
-def _delete_owned_image(config_dir: str, image_path: str) -> None:
-    """Blocking: best-effort delete of an owned image file under www/adaptive_plant/."""
-    filename = image_path[len(OWNED_IMAGE_PREFIX):]
-    full_path = Path(config_dir) / "www" / DOMAIN / filename
-    try:
-        full_path.unlink()
-    except OSError:
-        pass
-
-
 async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Clean up an owned uploaded image when the config entry is removed."""
     image_path = entry.options.get(CONF_IMAGE_PATH, entry.data.get(CONF_IMAGE_PATH))
     if is_owned_image_path(image_path):
-        await hass.async_add_executor_job(_delete_owned_image, hass.config.config_dir, image_path)
+        await hass.async_add_executor_job(delete_owned_image, hass.config.config_dir, image_path)

@@ -102,6 +102,10 @@ class PlantData:
         self._hass = hass
         self._entry = entry
         self._listeners: list[Callable[[], None]] = []
+        # The plant photo's current authenticated URL, set by the image entity
+        # (image.py) and mirrored as the Next watering sensor's entity_picture.
+        # In memory only: it carries a short-lived access token.
+        self.photo_url: str | None = None
         # Last numeric moisture reading, used to edge-trigger the wet-threshold
         # auto-mark (see handle_moisture_change). In memory only: writing every
         # reading to entry.options would churn the config entry.

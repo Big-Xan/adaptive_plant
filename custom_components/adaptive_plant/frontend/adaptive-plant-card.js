@@ -1,4 +1,50 @@
-// Adaptive Plant Card v20.1
+// Adaptive Plant Card v20.2
+
+// ── Card-config sanitizers ──────────────────────────────────────────────────
+// Config colors and sizes are interpolated into style attributes and the
+// <style> block, so they are normalised once in setConfig: anything that
+// isn't a plain CSS color / finite number falls back to the field's default.
+// CSS.supports alone isn't enough (a var(--x, …) fallback accepts almost any
+// token run, including </style>), so characters that could leave a CSS value
+// or an HTML attribute are rejected first. That includes & (inside a style
+// attribute the HTML parser turns &#59 into ";" before CSS reads it) and ":"
+// (no color needs it; url(https:…) does). Images are never colors either, so
+// url(), image-set(), gradients and friends are refused even as a var() fallback.
+var _AP_COLOR_RE = /^(#[0-9a-f]{3,8}|[a-z]+|(rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\([a-z0-9#.,%\s\/+-]*\)|var\(\s*--[a-z0-9_-]+\s*(,[a-z0-9#.,%\s\/()_+-]*)?\))$/i;
+var _AP_NOT_COLOR_RE = /(url|image|image-set|cross-fade|element|paint|[a-z-]*gradient)\s*\(/i;
+function _apSafeColor(v, fallback) {
+  if (typeof v !== 'string') return fallback;
+  var s = v.trim();
+  if (!s || /[<>"';{}\\&:\r\n]/.test(s) || _AP_NOT_COLOR_RE.test(s)) return fallback;
+  if (typeof CSS !== 'undefined' && CSS && typeof CSS.supports === 'function') {
+    return CSS.supports('color', s) ? s : fallback;
+  }
+  return _AP_COLOR_RE.test(s) ? s : fallback;
+}
+// Number or numeric string ("14") -> finite number clamped to [min, max];
+// anything else (incl. "14px", "12;color:red") -> fallback.
+function _apSafeNum(v, fallback, min, max) {
+  if (typeof v === 'string' && v.trim() === '') return fallback;
+  if (typeof v !== 'number' && typeof v !== 'string') return fallback;
+  var n = Number(v);
+  if (!isFinite(n)) return fallback;
+  return Math.min(Math.max(n, min), max);
+}
+function _apOneOf(v, allowed, fallback) {
+  return allowed.indexOf(v) !== -1 ? v : fallback;
+}
+// A string or list of strings -> trimmed, lower-cased, non-empty strings
+// (anything else is dropped). Used for the plant filters, which are only ever
+// compared against device/area ids and names, never rendered.
+function _apStrList(v) {
+  var src = Array.isArray(v) ? v : (typeof v === 'string' ? [v] : []);
+  var out = [];
+  for (var i = 0; i < src.length && out.length < 500; i++) {
+    var s = (typeof src[i] === 'string' || typeof src[i] === 'number') ? String(src[i]).trim().toLowerCase() : '';
+    if (s && out.indexOf(s) === -1) out.push(s);
+  }
+  return out;
+}
 
 class AdaptivePlantCard extends HTMLElement {
   constructor() {
@@ -27,22 +73,19 @@ class AdaptivePlantCard extends HTMLElement {
     this._showToday      = config.show_today      !== false;
     this._showUpcoming   = config.show_upcoming   !== false;
     this._showOverview   = config.show_overview   !== false;
-    this._overdueColor   = config.overdue_color   || '#e05c5c';
-    this._upcomingDays   = config.upcoming_days   || 30;
+    this._overdueColor   = _apSafeColor(config.overdue_color, '#e05c5c');
+    this._upcomingDays   = _apSafeNum(config.upcoming_days || 30, 30, 0, 3650);
     this._showBackground     = config.show_background !== false;
-    this._cardBackgroundColor = (config.card_background_color !== undefined && config.card_background_color !== null && config.card_background_color !== '')
-                                  ? config.card_background_color : null;
-    this._tabActiveColor      = (config.tab_active_color !== undefined && config.tab_active_color !== null && config.tab_active_color !== '')
-                                  ? config.tab_active_color : '#7cb97e';
+    this._cardBackgroundColor = _apSafeColor(config.card_background_color, null);
+    this._tabActiveColor      = _apSafeColor(config.tab_active_color, '#7cb97e');
     this._pinHoldButton  = config.pin_hold_button === true;
-    this._labelAlign     = config.label_align     || 'left';
-    this._labelPadding   = (config.label_padding !== undefined && config.label_padding !== null && config.label_padding !== '')
-                             ? config.label_padding : null;
-    this._labelColor     = config.label_color     || null;
-    this._overviewSort   = config.overview_sort   || 'alphabetical';
-    this._areaHeaderSize  = config.area_header_size  || null;
-    this._areaHeaderColor = config.area_header_color || null;
-    this._labelHeaderSize = config.label_header_size || null;
+    this._labelAlign     = _apOneOf(config.label_align, ['left', 'center', 'right'], 'left');
+    this._labelPadding   = _apSafeNum(config.label_padding, null, 0, 200);
+    this._labelColor     = _apSafeColor(config.label_color, null);
+    this._overviewSort   = _apOneOf(config.overview_sort, ['alphabetical', 'health', 'watering'], 'alphabetical');
+    this._areaHeaderSize  = _apSafeNum(config.area_header_size  || null, null, 0, 200);
+    this._areaHeaderColor = _apSafeColor(config.area_header_color, null);
+    this._labelHeaderSize = _apSafeNum(config.label_header_size || null, null, 0, 200);
 
     // v13 options
     this._excludeMoistureFromUpcoming = config.exclude_moisture_from_upcoming === true;
@@ -59,14 +102,12 @@ class AdaptivePlantCard extends HTMLElement {
 
     // v15 options
     this._showRepotting       = config.show_repotting       !== false;
-    this._repottedButtonColor = config.repotted_button_color || '#c8975a';
+    this._repottedButtonColor = _apSafeColor(config.repotted_button_color, '#c8975a');
     this._repottedButtonIcon  = config.repotted_button_icon  || null;
     this._showLatinName       = config.show_latin_name       === true;
-    this._latinNameSize       = (config.latin_name_size !== undefined && config.latin_name_size !== null && config.latin_name_size !== '')
-                                  ? config.latin_name_size : null;
-    this._latinNameColor      = config.latin_name_color  || null;
-    this._latinNamePadding    = (config.latin_name_padding !== undefined && config.latin_name_padding !== null && config.latin_name_padding !== '')
-                                  ? config.latin_name_padding : null;
+    this._latinNameSize       = _apSafeNum(config.latin_name_size, null, 0, 200);
+    this._latinNameColor      = _apSafeColor(config.latin_name_color, null);
+    this._latinNamePadding    = _apSafeNum(config.latin_name_padding, null, 0, 200);
 
     // v19 options — configurable plant image (avatar) size & shape.
     // image_size is a pixel value: default 44 (the historic fixed size),
@@ -89,21 +130,29 @@ class AdaptivePlantCard extends HTMLElement {
     this._showHoldButton     = config.show_hold_button     !== false;
     this._showCompletedToday = config.show_completed_today === true;
 
+    // v20.2 options — which plants this card shows (#31). Both are optional and
+    // case-insensitive. exclude_plants: device ids (what the editor saves) or
+    // plant names. include_areas: area ids or names; when set, only plants in
+    // those areas are shown. Applied in _rawPlants, so every tab and the hold
+    // bar see the same filtered set.
+    this._excludePlants = _apStrList(config.exclude_plants);
+    this._includeAreas  = _apStrList(config.include_areas);
+
     var ic = config.icons || {};
     this._icons = {
       water:                        ic.water                        || 'mdi:water',
-      water_color:                  ic.water_color                  || '#64b4ff',
+      water_color:                  _apSafeColor(ic.water_color,                  '#64b4ff'),
       fertilize:                    ic.fertilize                    || 'mdi:flower',
-      fertilize_color:              ic.fertilize_color              || '#7cb97e',
+      fertilize_color:              _apSafeColor(ic.fertilize_color,              '#7cb97e'),
       snooze:                       ic.snooze                       || 'mdi:bell-sleep',
-      snooze_color:                 ic.snooze_color                 || '#aaaaaa',
+      snooze_color:                 _apSafeColor(ic.snooze_color,                 '#aaaaaa'),
       fertilize_done:               ic.fertilize_done               || 'mdi:check',
-      fertilize_done_color:         ic.fertilize_done_color         || '#7cb97e',
+      fertilize_done_color:         _apSafeColor(ic.fertilize_done_color,         '#7cb97e'),
       water_done:                   ic.water_done                   || 'mdi:check',
-      water_done_color:             ic.water_done_color             || '#64b4ff',
+      water_done_color:             _apSafeColor(ic.water_done_color,             '#64b4ff'),
       health_confirm:               ic.health_confirm               || 'mdi:cards-heart',
-      health_confirm_color:         ic.health_confirm_color         || '#aaaaaa',
-      health_confirm_overdue_color: ic.health_confirm_overdue_color || '#e05c5c',
+      health_confirm_color:         _apSafeColor(ic.health_confirm_color,         '#aaaaaa'),
+      health_confirm_overdue_color: _apSafeColor(ic.health_confirm_overdue_color, '#e05c5c'),
     };
 
     var h  = config.health        || {};
@@ -117,12 +166,12 @@ class AdaptivePlantCard extends HTMLElement {
       text_today:    h.text_today    !== undefined ? h.text_today    : null,
       text_upcoming: h.text_upcoming !== undefined ? h.text_upcoming : null,
       text_overview: h.text_overview !== undefined ? h.text_overview : null,
-      ring_width:    h.ring_width || 3,
+      ring_width:    _apSafeNum(h.ring_width || 3, 3, 0, 50),
       colors: {
-        excellent: hc.excellent || '#7cb97e',
-        good:      hc.good      || '#a8cc8a',
-        poor:      hc.poor      || '#e6a817',
-        sick:      hc.sick      || '#e05c5c',
+        excellent: _apSafeColor(hc.excellent, '#7cb97e'),
+        good:      _apSafeColor(hc.good,      '#a8cc8a'),
+        poor:      _apSafeColor(hc.poor,      '#e6a817'),
+        sick:      _apSafeColor(hc.sick,      '#e05c5c'),
       },
     };
 
@@ -304,6 +353,7 @@ class AdaptivePlantCard extends HTMLElement {
   _renderIcon(value, color, size) {
     size = size || '18px';
     if (!value) return '';
+    color = _apSafeColor(color, '');   // CSS-level injection guard (e.g. linked-sensor colors)
     // Icons and colors come from the card config and from linked sensors set
     // in Configure. Escape both so a stray quote or < can't break the markup.
     if (value.indexOf(':') !== -1) {
@@ -365,7 +415,7 @@ class AdaptivePlantCard extends HTMLElement {
     if (!this._showLatinName || !p.latinName) return '';
     var size  = this._latinNameSize    ? this._latinNameSize    + 'px' : '11px';
     var color = this._latinNameColor   ? this._latinNameColor          : 'var(--secondary-text-color,#888)';
-    var vpad  = this._latinNamePadding ? this._latinNamePadding + 'px' : '1px';
+    var vpad  = this._latinNamePadding !== null ? this._latinNamePadding + 'px' : '1px';
     return '<div class="plant-latin" style="font-size:' + size + ';color:' + color + ';padding-top:' + vpad + ';padding-bottom:' + vpad + ';">' + this._esc(p.latinName) + '</div>';
   }
 
@@ -407,8 +457,10 @@ class AdaptivePlantCard extends HTMLElement {
   _bootstrapShell() {
     var self  = this;
     var cfg   = this._config || {};
-    var height = cfg.height ? (cfg.height + 'px') : null;
-    var width  = cfg.width  ? (cfg.width  + 'px') : null;
+    var hNum   = cfg.height ? _apSafeNum(cfg.height, null, 0, 10000) : null;
+    var wNum   = cfg.width  ? _apSafeNum(cfg.width,  null, 0, 10000) : null;
+    var height = hNum !== null ? (hNum + 'px') : null;
+    var width  = wNum !== null ? (wNum + 'px') : null;
 
     var tabs = [
       this._showToday    && '<button class="tab ' + (this._tab === 'today'    ? 'active' : '') + '" data-tab="today">Today</button>',
@@ -599,7 +651,9 @@ class AdaptivePlantCard extends HTMLElement {
       if (!byDevice[ent.device_id]) byDevice[ent.device_id] = [];
       byDevice[ent.device_id].push(ids[i]);
     }
-    return Object.keys(byDevice).map(function(devId) {
+    return Object.keys(byDevice).filter(function(devId) {
+      return self._plantShown(devId, (hass.devices && hass.devices[devId]) || {});
+    }).map(function(devId) {
       var devIds   = byDevice[devId];
       var dev      = (hass.devices && hass.devices[devId]) || {};
       var areaName = dev.area_id ? ((hass.areas && hass.areas[dev.area_id] && hass.areas[dev.area_id].name) || 'No Area') : 'No Area';
@@ -690,6 +744,21 @@ class AdaptivePlantCard extends HTMLElement {
         customSensors:        customResolved,
       };
     }).sort(function(a, b) { return a.name.localeCompare(b.name); });
+  }
+
+  // Card plant filters (exclude_plants / include_areas, see setConfig).
+  _plantShown(devId, dev) {
+    var ex  = this._excludePlants || [];
+    var inc = this._includeAreas  || [];
+    if (!ex.length && !inc.length) return true;
+    var name = String(dev.name_by_user || dev.name || '').toLowerCase();
+    if (ex.indexOf(String(devId).toLowerCase()) !== -1) return false;
+    if (name && ex.indexOf(name) !== -1) return false;
+    if (!inc.length) return true;
+    if (!dev.area_id) return false;
+    var area  = this._hass && this._hass.areas && this._hass.areas[dev.area_id];
+    var aname = area && area.name ? String(area.name).toLowerCase() : '';
+    return inc.indexOf(String(dev.area_id).toLowerCase()) !== -1 || (!!aname && inc.indexOf(aname) !== -1);
   }
 
   _daysNum(str) {
@@ -1081,7 +1150,9 @@ class AdaptivePlantCard extends HTMLElement {
 
   _renderOverview(plants) {
     var self = this;
-    if (!plants.length) return '<div class="empty"><span class="empty-icon">🌱</span><p>No plants added yet.</p></div>';
+    if (!plants.length) return '<div class="empty"><span class="empty-icon">🌱</span><p>' +
+      ((this._excludePlants.length || this._includeAreas.length) ? 'No plants match this card’s plant filters.' : 'No plants added yet.') +
+      '</p></div>';
 
     var healthRank = { excellent: 0, good: 1, poor: 2, sick: 3 };
     var sorted = plants.slice().sort(function(a, b) {
@@ -1409,13 +1480,51 @@ class AdaptivePlantCardEditor extends HTMLElement {
     super();
     this.attachShadow({ mode: 'open' });
     this._config   = {};
-    this._sections = { display: true, schedule: false, health: false, icons: false };
+    this._sections = { display: true, plants: false, schedule: false, health: false, icons: false };
+    this._plantsSig = null;
   }
 
   setConfig(config) {
     this._config = JSON.parse(JSON.stringify(config || {}));
     this._render();
   }
+
+  // HA hands the editor hass on every state change. Re-render only when the
+  // plant/area list itself changes, so typing in a field never loses focus.
+  set hass(hass) {
+    this._hass = hass;
+    var sig = JSON.stringify(this._plantChoices());
+    if (sig === this._plantsSig) return;
+    this._plantsSig = sig;
+    this._render();
+  }
+
+  // Adaptive Plant devices and their areas, for the Plants section pickers.
+  _plantChoices() {
+    var hass = this._hass;
+    var out = { plants: [], areas: [] };
+    if (!hass || !hass.entities) return out;
+    var seen = {}, areaSeen = {};
+    Object.keys(hass.entities).forEach(function(id) {
+      var ent = hass.entities[id];
+      if (!ent || ent.platform !== 'adaptive_plant' || !ent.device_id || seen[ent.device_id]) return;
+      seen[ent.device_id] = true;
+      var dev  = (hass.devices && hass.devices[ent.device_id]) || {};
+      var area = dev.area_id && hass.areas ? hass.areas[dev.area_id] : null;
+      out.plants.push({ id: ent.device_id, name: dev.name_by_user || dev.name || 'Plant', area: area ? area.name : '' });
+      if (area && !areaSeen[dev.area_id]) { areaSeen[dev.area_id] = true; out.areas.push({ id: dev.area_id, name: area.name }); }
+    });
+    var byName = function(a, b) { return String(a.name).localeCompare(String(b.name)); };
+    out.plants.sort(byName); out.areas.sort(byName);
+    return out;
+  }
+
+  // Current filter list from the config (same normalisation as the card).
+  _filterList(key) { return _apStrList(this._config[key]); }
+
+  // Config values are written into value="..." attributes: escape them so a
+  // quote or < in a saved value can't break out of the attribute.
+  _esc(s) { return AdaptivePlantCard.prototype._esc(s); }
 
   _dispatch() {
     this.dispatchEvent(new CustomEvent('config-changed', {
@@ -1455,6 +1564,7 @@ class AdaptivePlantCardEditor extends HTMLElement {
   _editorHtml() {
     return '<div class="editor">' +
       this._section('display',  '🖥️  Display',  this._displayFields())  +
+      this._section('plants',   '🪴  Plants',   this._plantFields())    +
       this._section('schedule', '📅  Schedule', this._scheduleFields()) +
       this._section('health',   '🌡️  Health',   this._healthFields())   +
       this._section('icons',    '🎨  Icons',    this._iconFields())     +
@@ -1538,7 +1648,7 @@ class AdaptivePlantCardEditor extends HTMLElement {
           '<button class="tri-btn ' + (align === 'right'  ? 'active-def' : '') + '" data-tri="label_align" data-val="right">Right</button>'  +
         '</div>' +
         (align !== 'center'
-          ? '<div class="field-hint" style="margin-top:6px;">Padding from the ' + align + ' edge (px).</div>' +
+          ? '<div class="field-hint" style="margin-top:6px;">Padding from the ' + this._esc(align) + ' edge (px).</div>' +
             this._textField('Label padding (px)', 'label_padding', this._get('label_padding', ''), 'e.g. 20', 'number')
           : '') +
         '<div style="margin-top:8px;">' + this._colorField('Label text color', 'label_color', this._get('label_color', '#666666')) + '</div>' +
@@ -1565,6 +1675,57 @@ class AdaptivePlantCardEditor extends HTMLElement {
         '<div class="field-hint">Color is configured in the Label alignment section above.</div>' +
         this._textField('Font size (px)', 'label_header_size', this._get('label_header_size', ''), 'e.g. 11', 'number') +
       '</div>';
+  }
+
+  _plantFields() {
+    var self    = this;
+    var choices = this._plantChoices();
+    var inc     = this._filterList('include_areas');
+    var ex      = this._filterList('exclude_plants');
+    var pick = function(kind, item, on, sub) {
+      return '<label class="toggle-label"><span>' + self._esc(item.name) +
+        (sub ? '<span class="pick-sub">' + self._esc(sub) + '</span>' : '') + '</span><div class="toggle-wrap">' +
+        '<input type="checkbox" class="pick-input" data-pick="' + kind + '" data-id="' + self._esc(item.id) +
+        '" data-name="' + self._esc(item.name) + '" ' + (on ? 'checked' : '') + ' />' +
+        '<span class="toggle-slider"></span></div></label>';
+    };
+    if (!choices.plants.length) {
+      return '<div class="field-hint">No Adaptive Plant plants found yet.</div>';
+    }
+    var areas = choices.areas.map(function(a) {
+      var on = inc.indexOf(String(a.id).toLowerCase()) !== -1 || inc.indexOf(String(a.name).toLowerCase()) !== -1;
+      return pick('area', a, on, '');
+    }).join('');
+    var plants = choices.plants.map(function(p) {
+      var off = ex.indexOf(String(p.id).toLowerCase()) !== -1 || ex.indexOf(String(p.name).toLowerCase()) !== -1;
+      return pick('plant', p, !off, p.area);
+    }).join('');
+    return (areas
+        ? '<div class="field-group"><div class="field-label">Only show these areas</div>' +
+            '<div class="pick-list">' + areas + '</div>' +
+            '<div class="field-hint">Leave all off to show every area. When any are on, plants without an area are hidden too.</div>' +
+          '</div>'
+        : '') +
+      '<div class="field-group"><div class="field-label">Plants on this card</div>' +
+        '<div class="pick-list">' + plants + '</div>' +
+        '<div class="field-hint">Turn a plant off to hide it from every tab of this card. The hold button only completes the plants this card shows. Your other cards are unaffected.</div>' +
+      '</div>';
+  }
+
+  // Toggle one plant (exclude_plants) or area (include_areas). Entries typed
+  // by hand in YAML (names, or ids of plants not listed) are kept as they are.
+  _togglePick(kind, id, name, on) {
+    var key  = kind === 'area' ? 'include_areas' : 'exclude_plants';
+    var add  = kind === 'area' ? on : !on;
+    var lid  = String(id).toLowerCase(), lname = String(name).toLowerCase();
+    var cur  = Array.isArray(this._config[key]) ? this._config[key].slice()
+             : (typeof this._config[key] === 'string' ? [this._config[key]] : []);
+    var next = cur.filter(function(v) {
+      var s = String(v).trim().toLowerCase();
+      return s !== lid && s !== lname;
+    });
+    if (add) next.push(id);
+    this._set(key, next.length ? next : null);
   }
 
   _scheduleFields() {
@@ -1641,21 +1802,21 @@ class AdaptivePlantCardEditor extends HTMLElement {
 
   _toggle(label, path, value) {
     return '<label class="toggle-label"><span>' + label + '</span><div class="toggle-wrap">' +
-      '<input type="checkbox" class="toggle-input" data-path="' + path + '" ' + (value !== false ? 'checked' : '') + ' />' +
+      '<input type="checkbox" class="toggle-input" data-path="' + this._esc(path) + '" ' + (value !== false ? 'checked' : '') + ' />' +
       '<span class="toggle-slider"></span></div></label>';
   }
 
   _textField(label, path, value, placeholder, type) {
     return '<div class="text-field">' + (label ? '<div class="field-sublabel">' + label + '</div>' : '') +
-      '<input class="text-input" type="' + (type || 'text') + '" data-path="' + path + '" value="' +
-        (value !== undefined && value !== null ? value : '') + '" placeholder="' + (placeholder || '') + '" /></div>';
+      '<input class="text-input" type="' + this._esc(type || 'text') + '" data-path="' + this._esc(path) + '" value="' +
+        this._esc(value !== undefined && value !== null ? value : '') + '" placeholder="' + this._esc(placeholder || '') + '" /></div>';
   }
 
   _colorField(label, path, value) {
     return '<div class="color-field">' + (label ? '<div class="field-sublabel">' + label + '</div>' : '') +
       '<div class="color-wrap">' +
-        '<input type="color" class="color-swatch" data-path="' + path + '" value="' + value + '" />' +
-        '<input type="text"  class="color-text"   data-color-text="' + path + '" value="' + value + '" placeholder="#rrggbb" />' +
+        '<input type="color" class="color-swatch" data-path="' + this._esc(path) + '" value="' + this._esc(value) + '" />' +
+        '<input type="text"  class="color-text"   data-color-text="' + this._esc(path) + '" value="' + this._esc(value) + '" placeholder="#rrggbb" />' +
       '</div></div>';
   }
 
@@ -1666,6 +1827,9 @@ class AdaptivePlantCardEditor extends HTMLElement {
     });
     this.shadowRoot.querySelectorAll('.toggle-input').forEach(function(el) {
       el.addEventListener('change', function() { self._set(el.dataset.path, el.checked); });
+    });
+    this.shadowRoot.querySelectorAll('.pick-input').forEach(function(el) {
+      el.addEventListener('change', function() { self._togglePick(el.dataset.pick, el.dataset.id, el.dataset.name, el.checked); });
     });
     this.shadowRoot.querySelectorAll('.text-input').forEach(function(el) {
       el.addEventListener('change', function() {
@@ -1722,6 +1886,11 @@ class AdaptivePlantCardEditor extends HTMLElement {
       '.toggle-input:checked + .toggle-slider{background:#7cb97e;}',
       '.toggle-slider::after{content:"";position:absolute;width:16px;height:16px;left:3px;top:3px;border-radius:50%;background:#fff;transition:transform 0.2s;}',
       '.toggle-input:checked + .toggle-slider::after{transform:translateX(16px);}',
+      '.pick-input{opacity:0;width:0;height:0;position:absolute;}',
+      '.pick-input:checked + .toggle-slider{background:#7cb97e;}',
+      '.pick-input:checked + .toggle-slider::after{transform:translateX(16px);}',
+      '.pick-list{display:flex;flex-direction:column;gap:8px;}',
+      '.pick-sub{margin-left:8px;font-size:11px;color:var(--secondary-text-color,#888);}',
       '.text-field{display:flex;flex-direction:column;gap:4px;}',
       '.text-input{background:var(--input-fill-color,rgba(255,255,255,0.06));border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:var(--primary-text-color,#e5e5e5);font-size:13px;padding:8px 10px;outline:none;width:100%;box-sizing:border-box;}',
       '.text-input:focus{border-color:#7cb97e;}',

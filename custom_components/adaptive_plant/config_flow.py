@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import os
+import posixpath
 import uuid
 from datetime import date, timedelta
 
@@ -81,6 +82,7 @@ from .const import (
     STATE_SNOOZE_COUNT,
     STATE_SNOOZED_THIS_PERIOD,
 )
+from .images import delete_owned_image, private_image_dir
 from .plant import PlantData, local_today
 from .seasons import (
     active_season,
@@ -308,13 +310,15 @@ def _resolve_date(selection: str, custom_date: str | None, interval: int) -> tup
 
 
 def _save_uploaded_image(hass: HomeAssistant, file_id: str, previous_path: str | None) -> str:
-    """Blocking: read the uploaded file, downscale it, and write it to www/.
+    """Blocking: read the uploaded file, downscale it, and write it to private
+    storage (<config>/adaptive_plant/images/, never www/). The returned owned
+    reference is served only through the plant's image entity.
 
     Runs entirely inside an executor job — must not be awaited directly.
     """
     from PIL import Image
 
-    target_dir = hass.config.path("www", DOMAIN)
+    target_dir = str(private_image_dir(hass.config.config_dir))
     os.makedirs(target_dir, exist_ok=True)
     filename = f"{uuid.uuid4().hex}.jpg"
     target_path = os.path.join(target_dir, filename)
@@ -333,34 +337,31 @@ def _save_uploaded_image(hass: HomeAssistant, file_id: str, previous_path: str |
             img.thumbnail((1024, 1024))
             img.save(target_path, format="JPEG", quality=85)
 
-    if is_owned_image_path(previous_path):
-        previous_filename = previous_path[len(OWNED_IMAGE_PREFIX):]
-        previous_full_path = os.path.join(target_dir, previous_filename)
-        try:
-            os.remove(previous_full_path)
-        except OSError:
-            pass
+    delete_owned_image(hass.config.config_dir, previous_path)
 
     return f"{OWNED_IMAGE_PREFIX}{filename}"
 
 
-def _delete_owned_image(hass: HomeAssistant, path: str) -> None:
+def _delete_owned_image(hass: HomeAssistant, path: str | None) -> None:
     """Blocking: best-effort delete of an owned image file. Run in an executor job."""
-    filename = path[len(OWNED_IMAGE_PREFIX):]
-    full_path = os.path.join(hass.config.path("www", DOMAIN), filename)
-    try:
-        os.remove(full_path)
-    except OSError:
-        pass
+    delete_owned_image(hass.config.config_dir, path)
 
 
 async def _persist_uploaded_image(hass: HomeAssistant, file_id: str, previous_path: str | None) -> str:
-    """Persist an uploaded image to www/adaptive_plant/ and return its public path.
+    """Persist an uploaded image to private storage and return its owned reference.
 
     Raises on failure (corrupt/non-image upload) so callers can surface
     an `invalid_image` form error.
     """
     return await hass.async_add_executor_job(_save_uploaded_image, hass, file_id, previous_path)
+
+
+def _is_reserved_image_path(path: str) -> bool:
+    """A typed path that names an upload (/local/adaptive_plant/<32 hex>.jpg,
+    also via //, ./ or ../). Only an upload may hold such a reference: typed by
+    hand, it would count as this plant's own photo, and replacing or removing
+    the plant would delete a file another plant uses."""
+    return is_owned_image_path(posixpath.normpath(path))
 
 
 # ── Seasonal schedule (Experimental) ───────────────────────────────────────────
@@ -378,6 +379,44 @@ def _md_text(value) -> str:
 def _season_sort(table: list[dict]) -> list[dict]:
     """Seasons in calendar order of their start ("MM-DD" sorts as a date)."""
     return sorted(table, key=lambda s: str(s.get(SEASON_START, "")))
+
+
+_LEARNED_INTERVALS = (SEASON_INTERVAL, SEASON_FERT_INTERVAL)
+
+
+def _merge_learned(
+    table: list[dict], base: dict,
+    opened_table: list[dict], opened_base: dict,
+    live_table: list[dict], live_base: dict,
+) -> tuple[list[dict], dict]:
+    """Keep intervals learned while the season manager was open.
+
+    The manager edits a copy taken when it opened. Adaptive learning or a
+    number-entity change can update the period in effect meanwhile; saving the
+    copy as-is would undo that. An interval the user left unchanged in the
+    manager takes the live value instead. Periods are matched by their dates,
+    so a season whose dates were edited keeps what the user saved.
+    """
+    def key(row: dict) -> tuple:
+        return (row.get(SEASON_START), row.get(SEASON_END))
+
+    def merge(row: dict, was: dict, now: dict) -> None:
+        for field in _LEARNED_INTERVALS:
+            if (
+                row.get(field) == was.get(field)
+                and now.get(field) is not None
+                and now.get(field) != was.get(field)
+            ):
+                row[field] = now[field]
+
+    opened = {key(r): r for r in opened_table}
+    live = {key(r): r for r in live_table}
+    for row in table:
+        k = key(row)
+        if k in opened and k in live:
+            merge(row, opened[k], live[k])
+    merge(base, opened_base, live_base)
+    return table, base
 
 
 def _period_text(season: dict | None, base: dict, fert_enabled: bool) -> str:
@@ -454,6 +493,9 @@ class _SeasonManagerMixin:
         table, base = self._season_initial()
         self._working_seasons = _season_sort([dict(s) for s in table])
         self._working_base = dict(base)
+        # What the manager opened with, to tell the user's edits apart from
+        # values learned while it was open (see _merge_learned).
+        self._season_opened = ([dict(s) for s in table], dict(base))
         return self._show_seasons_menu()
 
     def _show_seasons_menu(self) -> FlowResult:
@@ -767,6 +809,25 @@ class AdaptivePlantConfigFlow(_SeasonManagerMixin, ConfigFlow, domain=DOMAIN):
         self._working_seasons: list[dict] | None = None
         self._working_base: dict | None = None
         self._season_editing_idx: int = 0
+        # Set once the entry is created. Until then a photo uploaded in this
+        # wizard belongs to the flow and is deleted if it closes (async_remove).
+        self._created: bool = False
+        # The file this wizard itself uploaded, tracked apart from
+        # CONF_IMAGE_PATH: that field can also hold a typed path, possibly
+        # another plant's managed photo, which the wizard must never delete.
+        self._wizard_upload: str | None = None
+
+    @callback
+    def async_remove(self) -> None:
+        """The wizard closed. The photo it uploaded is deleted unless the
+        created plant uses it (the entry then owns it). Typed paths are
+        never touched."""
+        upload = self._wizard_upload
+        if not is_owned_image_path(upload):
+            return
+        if self._created and self._data.get(CONF_IMAGE_PATH) == upload:
+            return
+        self.hass.async_add_executor_job(_delete_owned_image, self.hass, upload)
 
     async def async_step_user(self, user_input: dict | None = None) -> FlowResult:
         # Offer the duplicate path only when there's an existing plant to copy;
@@ -1089,8 +1150,10 @@ class AdaptivePlantConfigFlow(_SeasonManagerMixin, ConfigFlow, domain=DOMAIN):
             path = user_input.get(CONF_IMAGE_PATH, "").strip()
             if file_id:
                 try:
-                    self._data[CONF_IMAGE_PATH] = await _persist_uploaded_image(
-                        self.hass, file_id, self._data.get(CONF_IMAGE_PATH)
+                    # Replaces (and deletes) only this wizard's own earlier
+                    # upload, never a typed path.
+                    self._data[CONF_IMAGE_PATH] = self._wizard_upload = await _persist_uploaded_image(
+                        self.hass, file_id, self._wizard_upload
                     )
                 except Exception:  # noqa: BLE001
                     _LOGGER.exception("Failed to process uploaded plant image")
@@ -1098,6 +1161,8 @@ class AdaptivePlantConfigFlow(_SeasonManagerMixin, ConfigFlow, domain=DOMAIN):
             elif path:
                 if not path.startswith("/local/"):
                     errors[CONF_IMAGE_PATH] = "invalid_image_path"
+                elif _is_reserved_image_path(path):
+                    errors[CONF_IMAGE_PATH] = "image_path_reserved"
                 else:
                     self._data[CONF_IMAGE_PATH] = path
             else:
@@ -1138,6 +1203,7 @@ class AdaptivePlantConfigFlow(_SeasonManagerMixin, ConfigFlow, domain=DOMAIN):
         # _dup_options is only filled when duplicating; _new_options only when
         # seasons were saved in this wizard.
         options = {**self._dup_options, **self._new_options}
+        self._created = True
         if options:
             return self.async_create_entry(
                 title=self._data[CONF_PLANT_NAME], data=self._data, options=options
@@ -1385,6 +1451,10 @@ class AdaptivePlantOptionsFlow(_SeasonManagerMixin, OptionsFlow):
                         # only for a path changed in this submit, so a path saved
                         # before this check existed still saves unchanged.
                         errors[CONF_IMAGE_PATH] = "invalid_image_path"
+                    elif new_path and new_path != current_image_path and _is_reserved_image_path(new_path):
+                        # The plant's own upload left in the field saves as-is;
+                        # any other upload's file can't be typed in.
+                        errors[CONF_IMAGE_PATH] = "image_path_reserved"
                     else:
                         cleaned[CONF_IMAGE_PATH] = new_path
                         if new_path != current_image_path:
@@ -1978,6 +2048,10 @@ class AdaptivePlantOptionsFlow(_SeasonManagerMixin, OptionsFlow):
     async def _season_commit(self, table: list[dict], base: dict) -> FlowResult:
         """Stage the saved seasons and base; the update listener applies them
         (interval swaps, reschedules, pauses) right after _save()."""
+        opened = getattr(self, "_season_opened", None)
+        if opened is not None:
+            live_table, live_base = self._season_initial()
+            table, base = _merge_learned(table, base, *opened, live_table, live_base)
         old = self._config_entry.options.get(CONF_SEASONS)
         self._pending_opts[CONF_SEASONS] = table
         self._pending_opts[CONF_SEASON_BASE] = base
@@ -2289,6 +2363,8 @@ class AdaptivePlantOptionsFlow(_SeasonManagerMixin, OptionsFlow):
             elif path:
                 if not path.startswith("/local/"):
                     errors[CONF_IMAGE_PATH] = "invalid_image_path"
+                elif _is_reserved_image_path(path):
+                    errors[CONF_IMAGE_PATH] = "image_path_reserved"
                 else:
                     self._pending_opts[CONF_IMAGE_PATH] = path
             else:

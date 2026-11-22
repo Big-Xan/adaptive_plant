@@ -7,11 +7,12 @@ from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, Sen
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN
+from .const import DOMAIN, is_owned_image_path, photo_signal
 from .plant import PlantData
 
 
@@ -114,6 +115,9 @@ class LastWateredSensor(PlantSensorBase):
 class NextWateringSensor(PlantSensorBase):
     _attr_device_class = SensorDeviceClass.DATE
     _attr_translation_key = "next_watering"
+    # An uploaded photo's URL carries a rotating access token: keep it out of
+    # the recorder database.
+    _unrecorded_attributes = frozenset({"entity_picture"})
 
     def __init__(self, plant: PlantData, entry: ConfigEntry) -> None:
         super().__init__(plant, entry)
@@ -131,9 +135,25 @@ class NextWateringSensor(PlantSensorBase):
 
     @property
     def entity_picture(self) -> str | None:
-        if self._plant.enable_image:
-            return self._plant.image_path
-        return None
+        if not self._plant.enable_image:
+            return None
+        path = self._plant.image_path
+        if is_owned_image_path(path):
+            # An uploaded photo is private: use the image entity's
+            # authenticated URL (None until that entity is up).
+            return self._plant.photo_url
+        # A path the user typed under /local/ is served by HA as entered.
+        return path
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        # The image entity's URL changes every few minutes (token rotation)
+        # and with each new photo; repaint the picture when it does.
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass, photo_signal(self._entry.entry_id), self.async_write_ha_state
+            )
+        )
 
     @property
     def extra_state_attributes(self) -> dict:
